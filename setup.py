@@ -39,13 +39,14 @@ dev_requirements = [
 
 step_workflow_requirements = [
     "bokeh>=2.0.2",
+    "cloudpickle<1.5,>=0.6.0"  # needed for prefect 0.12.0
     "dask[bag]>=2.18.1",
     "dask_jobqueue>=0.7.0",
     "datastep>=0.1.6",
     "distributed>=2.18.0",
     "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
-    "prefect>=0.12.0",
+    "prefect>=0.12.1",
     "python-dateutil<=2.8.0",  # need <=2.8.0 for quilt3 in step
 ]
 
@@ -55,13 +56,20 @@ requirements = [
     "numpy",
     "pandas",
     "Pillow",
+    "pyarrow",
     "tqdm",
+]
+
+
+aics_data_requirements = [
+    "lkaccess",
 ]
 
 extra_requirements = {
     "setup": setup_requirements,
     "test": test_requirements,
     "dev": dev_requirements,
+    "aics": aics_data_requirements,
     "all": [
         *requirements,
         *dev_requirements,
@@ -76,8 +84,8 @@ setup(
         "Intended Audience :: Developers",
         "License :: Free for non-commercial use",
         "Natural Language :: English",
+        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
     ],
     description="Workflow to manage processing of FOVs and Cells for the Cell Variance Analysis program.",
     entry_points={
@@ -93,7 +101,7 @@ setup(
     keywords="cvapipe",
     name="cvapipe",
     packages=find_packages(exclude=["tests", "*.tests", "*.tests.*"]),
-    python_requires=">=3.7",
+    python_requires=">=3.6,<3.8",
     setup_requires=setup_requirements,
     test_suite="cvapipe/tests",
     tests_require=test_requirements,
