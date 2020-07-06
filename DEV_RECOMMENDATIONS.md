@@ -55,4 +55,3 @@ the needed data. How to I tell it which data it needs?"
 underscores (`_`) in between the words when creating it. This will result in
 standardized file name and step names (ex: `make_new_step this_is_a_step` results
 in file: `cvapipe/steps/this_is_a_step.py` and step name: `ThisIsAStep`).
-2. If you have code to do input validation or other lightweight
