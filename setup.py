@@ -77,8 +77,8 @@ setup(
         "Intended Audience :: Developers",
         "License :: Free for non-commercial use",
         "Natural Language :: English",
+        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
     ],
     description="Workflow to manage processing of FOVs and Cells for the Cell Variance Analysis program.",
     entry_points={
@@ -94,7 +94,7 @@ setup(
     keywords="cvapipe",
     name="cvapipe",
     packages=find_packages(exclude=["tests", "*.tests", "*.tests.*"]),
-    python_requires=">=3.7",
+    python_requires=">=3.6,<3.8",
     setup_requires=setup_requirements,
     test_suite="cvapipe/tests",
     tests_require=test_requirements,
