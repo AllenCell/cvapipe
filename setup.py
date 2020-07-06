@@ -56,13 +56,20 @@ requirements = [
     "numpy",
     "pandas",
     "Pillow",
+    "pyarrow",
     "tqdm",
+]
+
+
+aics_data_requirements = [
+    "lkaccess",
 ]
 
 extra_requirements = {
     "setup": setup_requirements,
     "test": test_requirements,
     "dev": dev_requirements,
+    "aics": aics_data_requirements,
     "all": [
         *requirements,
         *dev_requirements,
