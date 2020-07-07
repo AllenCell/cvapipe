@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Enum
 
-
-class DatasetFields(Enum):
+class DatasetFields:
     CellLine = "CellLine"
     CellLineId = "CellLineId"
     CellLineName = "CellLineId/Name"

@@ -5,10 +5,11 @@ import logging
 from pathlib import Path
 from typing import Union
 
+import pandas as pd
 from datastep import Step, log_run_params
-from quilt3 import Package
 
 from ...constants import DatasetFields
+from ...utils import dataset_utils
 
 ###############################################################################
 
@@ -85,12 +86,12 @@ class Raw(Step):
         the data you will be working with downstream.
         """
         # Handle dataset provided as string or path
-        if isinstance(dataset, (str, Path)):
-            dataset = Path(dataset).expanduser().resolve(strict=True)
+        if isinstance(raw_dataset, (str, Path)):
+            dataset = Path(raw_dataset).expanduser().resolve(strict=True)
 
         # Read dataset
         if dataset.suffix in Raw.DATASET_DESERIALIZERS:
-            dataset = Raw.DATASET_DESERIALIZERS(dataset.suffix)
+            dataset = Raw.DATASET_DESERIALIZERS.get(dataset.suffix)(dataset)
         else:
             raise TypeError(
                 f"The provided dataset file is of an unsupported file format. "
@@ -101,11 +102,11 @@ class Raw(Step):
         # Check the dataset for the required columns
         dataset_utils.check_required_fields(
             dataset=dataset,
-            required_fields=DatasetFields,
+            required_fields=[*self.filepath_columns, *self.metadata_columns],
         )
 
         # Save manifest to CSV
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"
-        self.manifest.to_csv(manifest_save_path, index=False)
+        data.to_csv(manifest_save_path, index=False)
 
         return manifest_save_path
