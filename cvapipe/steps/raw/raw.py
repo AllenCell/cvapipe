@@ -53,9 +53,7 @@ class Raw(Step):
 
     @log_run_params
     def run(
-        self,
-        raw_dataset: Union[str, Path] = "aics_p4_data.parquet",
-        **kwargs,
+        self, raw_dataset: Union[str, Path] = "aics_p4_data.parquet", **kwargs,
     ) -> Path:
         """
         Download the latest full AICS dataset or passthrough a local dataset to use for

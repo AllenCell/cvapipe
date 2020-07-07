@@ -7,10 +7,9 @@ import pandas as pd
 
 ###############################################################################
 
+
 class MissingDataError(Exception):
-    def __init__(
-        self, dataset: pd.DataFrame, required_fields: List[str]
-    ):
+    def __init__(self, dataset: pd.DataFrame, required_fields: List[str]):
         # Run base exception init
         super().__init__()
 
