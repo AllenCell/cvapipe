@@ -17,6 +17,10 @@ In general, all commands for this package will follow the format:
 * `step` is the name of the step such as "GetDataset"
 * `command` is what you want that step to do, such as "run" or "push"
 
+**Available Steps**
+* `raw`: `cvapipe raw run --raw_dataset {path_to_dataset}` will validate that a dataset
+can be processed by the downstream steps.
+
 ### Whole Pipeline
 To run the entire pipeline from start to finish you can simply run:
 
