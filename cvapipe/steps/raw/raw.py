@@ -107,6 +107,6 @@ class Raw(Step):
 
         # Save manifest to CSV
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"
-        data.to_csv(manifest_save_path, index=False)
+        dataset.to_csv(manifest_save_path, index=False)
 
         return manifest_save_path
