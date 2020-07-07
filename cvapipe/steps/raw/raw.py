@@ -3,14 +3,12 @@
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import Union
 
-from tqdm import tqdm
-
-import numpy as np
-import pandas as pd
 from datastep import Step, log_run_params
-from PIL import Image
+from quilt3 import Package
+
+from ...constants import DatasetFields
 
 ###############################################################################
 
@@ -20,51 +18,90 @@ log = logging.getLogger(__name__)
 
 
 class Raw(Step):
-    # You only need to have an __init__ if you aren't using the default values
-    # In this case, we could get rid of it but for the purposes of this example
-    # we will keep it.
-    def __init__(self, direct_upstream_tasks=[], config=None):
-        super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
+    """
+    A routing step to get or passthrough a raw dataset for processing.
+    """
+
+    DATASET_DESERIALIZERS = {
+        ".parquet": pd.read_parquet,
+        ".csv": pd.read_csv,
+    }
+
+    def __init__(self):
+        super().__init__(
+            filepath_columns=[
+                DatasetFields.MembraneContourReadPath,
+                DatasetFields.MembraneSegmentationReadPath,
+                DatasetFields.NucleusContourReadPath,
+                DatasetFields.NucleusSegmentationReadPath,
+                DatasetFields.SourceReadPath,
+                DatasetFields.StructureContourReadPath,
+                DatasetFields.StructureSegmentationReadPath,
+            ],
+            metadata_columns=[
+                DatasetFields.FOVId,
+                DatasetFields.CellLine,
+                DatasetFields.Gene,
+                DatasetFields.PlateId,
+                DatasetFields.WellId,
+                DatasetFields.ProteinDisplayName,
+                DatasetFields.ColonyPosition,
+                DatasetFields.GoodCellIndicies,
+            ],
+        )
 
     @log_run_params
-    def run(self, n: int = 10, **kwargs) -> List[Path]:
+    def run(
+        self,
+        raw_dataset: Union[str, Path] = "aics_p4_data.parquet",
+        **kwargs,
+    ) -> Path:
         """
-        Generate N random images and save them to /images.
+        Download the latest full AICS dataset or passthrough a local dataset to use for
+        processing.
 
         Parameters
         ----------
-        n: int
-            Number of images to generate.
+        raw_dataset: Union[str, Path]
+            A path to a local dataset to be used for all downstream processing.
+            The dataset will be checked to ensure that all required columns are present.
+
+            Defaults to using the the internally accessible dataset created by
+            `scripts/create_aics_dataset.py`: "aics_p4_data.parquet".
+
+            Supported formats: `csv`, `parquet`
 
         Returns
         -------
-        images: List[Path]
-            A list of paths that point to the generated images.
+        manifest_path: Path
+            The local storage path to the manifest to be used for further downstream
+            processing and analysis.
+
+        Notes
+        -----
+        A reminder: The dataset will not be pushed up to quilt during this function run.
+        Data is only pushed from local storage to quilt when you run,
+        `cvapipe raw push` or `cvapipe all push` this simply gets you and/or validates
+        the data you will be working with downstream.
         """
+        # Handle dataset provided as string or path
+        if isinstance(dataset, (str, Path)):
+            dataset = Path(dataset).expanduser().resolve(strict=True)
 
-        # Empty manifest to fill in -- add more columns for e.g. labels, metadata, etc.
-        self.manifest = pd.DataFrame(index=range(n), columns=["filepath"])
+        # Read dataset
+        if dataset.suffix in Raw.DATASET_DESERIALIZERS:
+            dataset = Raw.DATASET_DESERIALIZERS(dataset.suffix)
+        else:
+            raise TypeError(
+                f"The provided dataset file is of an unsupported file format. "
+                f"Provided: {dataset.suffix}, "
+                f"Supported: {list(Raw.DATASET_DESERIALIZERS.keys())}"
+            )
 
-        # Subdirectory for the images
-        imdir = self.step_local_staging_dir / Path("images")
-        imdir.mkdir(parents=True, exist_ok=True)
-
-        # Set seed for reproducible random images
-        np.random.seed(seed=112358)
-
-        # Create images, save them, and fill in dataframe
-        images = []
-        for i in tqdm(range(n), desc="Creating and saving images"):
-            A = np.random.rand(128, 128, 4) * 255
-            img = Image.fromarray(A.astype("uint8")).convert("RGBA")
-            path = imdir / Path(f"image_{i}.png")
-            img.save(path)
-            self.manifest.at[i, "filepath"] = path
-            images.append(path)
-
-        # Save manifest as csv
-        self.manifest.to_csv(
-            self.step_local_staging_dir / Path("manifest.csv"), index=False
+        # Check the dataset for the required columns
+        dataset_utils.check_required_fields(
+            dataset=dataset,
+            required_fields=DatasetFields,
         )
 
-        return images
+        return dataset

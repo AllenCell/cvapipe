@@ -120,6 +120,9 @@ def create_aics_dataset(args: Args):
         # Drop columns that are now not needed
         data = data.drop(["CellId", "CellIndex"], axis=1)
 
+        # Temporary until datasets 83 and 84 have structure segmentations
+        data = data.loc[~data["DataSetId"].isin([83, 84])]
+
         # Sample the data
         if args.sample != 1.0:
             log.info(f"Sampling dataset with frac={args.sample}...")
