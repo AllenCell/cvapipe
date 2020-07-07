@@ -13,6 +13,7 @@ import logging
 from distributed import LocalCluster
 from prefect import Flow
 from prefect.engine.executors import DaskExecutor, LocalExecutor
+
 from cvapipe import steps
 
 ###############################################################################
@@ -31,19 +32,29 @@ class All:
         self.step_list = [steps.Raw()]
 
     def run(
-        self, clean: bool = False, debug: bool = False, **kwargs,
+        self,
+        distributed: bool = False,
+        overwrite: bool = False,
+        debug: bool = False,
+        **kwargs,
     ):
         """
         Run a flow with your steps.
 
         Parameters
         ----------
-        clean: bool
-            Should the local staging directory be cleaned prior to this run.
-            Default: False (Do not clean)
+        distributed: bool
+            A boolean option to determine if the jobs should be distributed to a SLURM
+            cluster when possible.
+            Default: False (Do not distribute)
+        overwrite: bool
+            If this pipeline has already partially or completely run, should it
+            overwrite the previous files or not.
+            Default: False (Do not overwrite or regenerate files)
         debug: bool
             A debug flag for the developer to use to manipulate how much data runs,
-            how it is processed, etc.
+            how it is processed, etc. Additionally, if debug is True, any mapped
+            operation will run on threads instead of processes.
             Default: False (Do not debug)
 
         Notes
@@ -60,26 +71,55 @@ class All:
         # Choose executor
         if debug:
             exe = LocalExecutor()
+            distributed_executor_address = None
+            log.info("Debug flagged. Will use threads instead of Dask.")
         else:
-            # Set up connection to computation cluster
-            cluster = LocalCluster()
+            if distributed:
+                # Create or get log dir
+                # Do not include ms
+                log_dir_name = datetime.now().isoformat().split(".")[0]
+                log_dir = Path(f".dask_logs/{log_dir_name}").expanduser()
+                # Log dir settings
+                log_dir.mkdir(parents=True, exist_ok=True)
 
-            # Inform of Dask UI
-            log.info(f"Cluster dashboard available at: {cluster.dashboard_link}")
+                # Create cluster
+                log.info("Creating SLURMCluster")
+                cluster = SLURMCluster(
+                    cores=4,
+                    memory="8GB",
+                    queue="aics_cpu_general",
+                    walltime="10:00:00",
+                    local_directory=str(log_dir),
+                    log_directory=str(log_dir),
+                )
 
-            # Create dask executor
-            exe = DaskExecutor(cluster.scheduler_address)
+                # Spawn workers
+                cluster.scale(50)
+                log.info("Created SLURMCluster")
+
+                # Use the port from the created connector to set executor address
+                distributed_executor_address = cluster.scheduler_address
+
+                # Log dashboard URI
+                log.info(f"Dask dashboard available at: {cluster.dashboard_link}")
+            else:
+                # Create local cluster
+                log.info("Creating LocalCluster")
+                cluster = LocalCluster()
+                log.info("Created LocalCluster")
+
+                # Set distributed_executor_address
+                distributed_executor_address = cluster.scheduler_address
+
+                # Log dashboard URI
+                log.info(f"Dask dashboard available at: {cluster.dashboard_link}")
+
+            # Use dask cluster
+            exe = DaskExecutor(distributed_executor_address)
 
         # Configure your flow
         with Flow("cvapipe") as flow:
-            # If you want to clean the local staging directories pass clean
-            # If you want to utilize some debugging functionality pass debug
-            # If you don't utilize any of these, just pass the parameters you need.
-            raw(
-                clean=clean,
-                debug=debug,
-                **kwargs,  # Allows us to pass `--n {some integer}` or other params
-            )
+            raw(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
 
         # Run flow and get ending state
         state = flow.run(executor=exe)
