@@ -46,6 +46,7 @@ step_workflow_requirements = [
     "distributed>=2.18.0",
     "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
+    "fsspec>=0.6.0",  # needed for dask[bag]
     "partd>=0.3.10",  # needed for dask[bag]
     "prefect>=0.12.1",
     "python-dateutil<=2.8.0",  # needed for quilt3 (datastep dependency)
