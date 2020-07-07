@@ -1,26 +1,33 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""
-A simple example of a test file using a function.
-NOTE: All test file names must have one of the two forms.
-- `test_<XYY>.py`
-- '<XYZ>_test.py'
+from pathlib import Path
 
-Docs: https://docs.pytest.org/en/latest/
-      https://docs.pytest.org/en/latest/goodpractices.html#conventions-for-python-test-discovery
-"""
+import pytest
 
+from cvapipe import exceptions
 from cvapipe.steps import Raw
 
 
-# This test just checks to see if the raw step instantiates and runs
-def test_raw_run(n=3):
+@pytest.mark.parametrize(
+    "raw_dataset",
+    [
+        "example_dataset_succeeding.parquet",
+        pytest.param("example.txt", marks=pytest.mark.raises(exception=TypeError)),
+        pytest.param(
+            "example_dataset_failing.csv",
+            marks=pytest.mark.raises(exception=exceptions.MissingDataError),
+        ),
+    ],
+)
+def test_raw_run(data_dir, tmpdir, raw_dataset):
+    # Initialize step
     raw = Raw()
-    images = raw.run(n=n)
-    assert len(raw.manifest) == n
-    assert len(images) == n
 
+    # Construct full path for data
+    raw_dataset = data_dir / raw_dataset
 
-# For more thorough testing examples, see:
-# https://github.com/AllenCellModeling/cookiecutter-pypackage/blob/master/%7B%7Bcookiecutter.project_slug%7D%7D/%7B%7Bcookiecutter.project_slug%7D%7D/tests/test_function.py
+    # Run with data
+    manifest_path = raw.run(raw_dataset=raw_dataset)
+
+    assert isinstance(manifest_path, Path)
