@@ -113,6 +113,25 @@ def create_aics_dataset(args: Args):
             .CellIndex\
             .apply(list)\
             .reset_index(name="GoodCellIndicies")
+
+        # The next statement is a tested assumption as of 14 July 2020 that this is a
+        # valid drop statement. No data is different between the "FOV" and "Cell"
+        # dataset besides the "CellId" and "CellIndex" columns
+        #
+        # from lkaccess import LabKey, contexts
+        # import pandas as pd
+        # lk = LabKey(contexts.PROD)
+        # data = pd.DataFrame(lk.dataset.get_pipeline_4_production_data())
+        #
+        # for name, group in data.groupby("FOVId"):
+        #     for col in group.columns:
+        #         if (len(group[col].unique()) != 1
+        #           and col not in ["CellId", "CellIndex"]):
+        #               print(
+        #                   f"FOVId: {name}", col,
+        #                   len(group[col].unique()), len(group)
+        #               )
+        #
         data = data.drop_duplicates(subset=["FOVId"], keep="first")
         data = data.reset_index(drop=True)
         data = data.merge(gci, how="left", on="FOVId")
