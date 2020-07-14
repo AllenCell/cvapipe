@@ -38,16 +38,18 @@ dev_requirements = [
 ]
 
 step_workflow_requirements = [
-    "bokeh>=2.0.2",
-    "cloudpickle<1.5,>=0.6.0"  # needed for prefect 0.12.0
+    "bokeh>=2.1.0",
+    "cloudpickle<1.5,>=0.6.0"  # needed for prefect
     "dask[bag]>=2.18.1",
     "dask_jobqueue>=0.7.0",
-    "datastep>=0.1.6",
+    "datastep>=0.1.8",
     "distributed>=2.18.0",
     "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
+    "fsspec>=0.6.0",  # needed for dask[bag]
+    "partd>=0.3.10",  # needed for dask[bag]
     "prefect>=0.12.1",
-    "python-dateutil<=2.8.0",  # need <=2.8.0 for quilt3 in step
+    "python-dateutil<=2.8.0",  # needed for quilt3 (datastep dependency)
 ]
 
 requirements = [

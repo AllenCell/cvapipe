@@ -14,13 +14,17 @@ by using the command line.
 In general, all commands for this package will follow the format:
 `cvapipe {step} {command}`
 
-* `step` is the name of the step such as "GetDataset"
+* `step` is the name of the step such as "ValidateDataset"
 * `command` is what you want that step to do, such as "run" or "push"
+
+**Available Steps**
+* `validate_dataset`: `cvapipe validate_dataset run --raw_dataset {path_to_dataset}`
+will validate that the provided dataset can be processed by the downstream steps.
 
 ### Whole Pipeline
 To run the entire pipeline from start to finish you can simply run:
 
-`cvapipe all run --dataset {path to dataset}`
+`cvapipe all run --raw_dataset {path to dataset}`
 
 ### Step and Pipeline Commands
 

@@ -27,6 +27,15 @@
     The obvious exception to this concept is where the underlying package actually
     utilizes `datastep` for the processing as well (Mitotic Classifier, NMA, etc.).
 
+3. Work with samples.
+
+    Because all data and parameters are tracked and logged. This is both beneficial for
+    reproduction but also storage heavy. It is recommended to sample your data while
+    working with it or at least sample the data and run your work with the sample
+    before you push it up to Quilt (`cvapipe {step} push`). Ideally, the only time that
+    the full dataset should be pushed to Quilt is on the `master` branch and managed by
+    CI/CD.
+
 ## FAQ
 
 1. "I added a task to the `direct_upstream_tasks` parameter in my step but it isn't
@@ -55,4 +64,3 @@ the needed data. How to I tell it which data it needs?"
 underscores (`_`) in between the words when creating it. This will result in
 standardized file name and step names (ex: `make_new_step this_is_a_step` results
 in file: `cvapipe/steps/this_is_a_step.py` and step name: `ThisIsAStep`).
-2. If you have code to do input validation or other lightweight
