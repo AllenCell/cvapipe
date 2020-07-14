@@ -30,7 +30,7 @@ class ValidateDataset(Step):
 
     def __init__(self):
         super().__init__(
-            step_name="Raw",  # Manual override to "Raw" for dataset publishing
+            step_name="raw",  # Manual override to "raw" for dataset publishing
             filepath_columns=[
                 DatasetFields.MembraneContourReadPath,
                 DatasetFields.MembraneSegmentationReadPath,
