@@ -22,12 +22,12 @@ from cvapipe.steps import ValidateDataset
 )
 def test_validate_dataset_run(data_dir, tmpdir, raw_dataset):
     # Initialize step
-    raw = Raw()
+    validate_dataset = ValidateDataset()
 
     # Construct full path for data
     raw_dataset = data_dir / raw_dataset
 
     # Run with data
-    manifest_path = raw.run(raw_dataset=raw_dataset)
+    manifest_path = validate_dataset.run(raw_dataset=raw_dataset)
 
     assert isinstance(manifest_path, Path)

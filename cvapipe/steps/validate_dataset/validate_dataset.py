@@ -88,13 +88,13 @@ class ValidateDataset(Step):
             dataset = Path(raw_dataset).expanduser().resolve(strict=True)
 
         # Read dataset
-        if dataset.suffix in Raw.DATASET_DESERIALIZERS:
-            dataset = Raw.DATASET_DESERIALIZERS.get(dataset.suffix)(dataset)
+        if dataset.suffix in ValidateDataset.DATASET_DESERIALIZERS:
+            dataset = ValidateDataset.DATASET_DESERIALIZERS.get(dataset.suffix)(dataset)
         else:
             raise TypeError(
                 f"The provided dataset file is of an unsupported file format. "
                 f"Provided: {dataset.suffix}, "
-                f"Supported: {list(Raw.DATASET_DESERIALIZERS.keys())}"
+                f"Supported: {list(ValidateDataset.DATASET_DESERIALIZERS.keys())}"
             )
 
         # Check the dataset for the required columns
