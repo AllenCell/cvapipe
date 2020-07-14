@@ -48,7 +48,6 @@ class ValidateDataset(Step):
                 DatasetFields.WellId,
                 DatasetFields.ProteinDisplayName,
                 DatasetFields.ColonyPosition,
-                DatasetFields.GoodCellIndicies,
             ],
         )
 
@@ -100,7 +99,11 @@ class ValidateDataset(Step):
         # Check the dataset for the required columns
         dataset_utils.check_required_fields(
             dataset=dataset,
-            required_fields=[*self.filepath_columns, *self.metadata_columns],
+            required_fields=[
+                *self.filepath_columns,
+                *self.metadata_columns,
+                DatasetFields.GoodCellIndicies,
+            ],
         )
 
         # Save manifest to CSV
