@@ -42,7 +42,7 @@ step_workflow_requirements = [
     "cloudpickle<1.5,>=0.6.0"  # needed for prefect
     "dask[bag]>=2.18.1",
     "dask_jobqueue>=0.7.0",
-    "datastep>=0.1.7",
+    "datastep>=0.1.8",
     "distributed>=2.18.0",
     "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
