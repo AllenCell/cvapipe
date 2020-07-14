@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from cvapipe import exceptions
-from cvapipe.steps import Raw
+from cvapipe.steps import ValidateDataset
 
 
 @pytest.mark.parametrize(
@@ -20,7 +20,7 @@ from cvapipe.steps import Raw
         ),
     ],
 )
-def test_raw_run(data_dir, tmpdir, raw_dataset):
+def test_validate_dataset_run(data_dir, tmpdir, raw_dataset):
     # Initialize step
     raw = Raw()
 

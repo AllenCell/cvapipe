@@ -18,9 +18,9 @@ log = logging.getLogger(__name__)
 ###############################################################################
 
 
-class Raw(Step):
+class ValidateDataset(Step):
     """
-    A routing step to get or passthrough a raw dataset for processing.
+    A simple step to validate a dataset provided to the workflow.
     """
 
     DATASET_DESERIALIZERS = {
@@ -30,6 +30,7 @@ class Raw(Step):
 
     def __init__(self):
         super().__init__(
+            step_name="Raw",  # Manual override to "Raw" for dataset publishing
             filepath_columns=[
                 DatasetFields.MembraneContourReadPath,
                 DatasetFields.MembraneSegmentationReadPath,
@@ -56,8 +57,7 @@ class Raw(Step):
         self, raw_dataset: Union[str, Path] = "aics_p4_data.parquet", **kwargs,
     ) -> Path:
         """
-        Download the latest full AICS dataset or passthrough a local dataset to use for
-        processing.
+        Validate that the provided dataset contains all the required fields.
 
         Parameters
         ----------
@@ -104,7 +104,7 @@ class Raw(Step):
         )
 
         # Save manifest to CSV
-        manifest_save_path = self.step_local_staging_dir / "manifest.csv"
-        dataset.to_csv(manifest_save_path, index=False)
+        manifest_save_path = self.step_local_staging_dir / "manifest.parquet"
+        dataset.to_parquet(manifest_save_path)
 
         return manifest_save_path
