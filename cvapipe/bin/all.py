@@ -32,7 +32,7 @@ class All:
         Set all of your available steps here.
         This is only used for data logging operations, not computation purposes.
         """
-        self.step_list = [steps.Raw()]
+        self.step_list = [steps.ValidateDataset()]
 
     def run(
         self,
@@ -69,7 +69,7 @@ class All:
         https://docs.prefect.io/core/
         """
         # Initalize steps
-        raw = steps.Raw()
+        validate_dataset = steps.ValidateDataset()
 
         # Choose executor
         if debug:
@@ -122,13 +122,13 @@ class All:
 
         # Configure your flow
         with Flow("cvapipe") as flow:
-            raw(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
+            validate_dataset(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
 
         # Run flow and get ending state
         state = flow.run(executor=exe)
 
         # Get and display any outputs you want to see on your local terminal
-        log.info(raw.get_result(state, flow))
+        log.info(validate_dataset.get_result(state, flow))
 
     def pull(self):
         """
