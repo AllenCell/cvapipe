@@ -125,9 +125,9 @@ def create_aics_dataset(args: Args):
             fov_index_to_id_dict = dict()
             fov_id_to_index_dict = dict()
             for cell_row in df_one_fov.itertuples():
+                # Cast to string so that the values can be valid dictionary keys
                 fov_index_to_id_dict[str(cell_row.CellIndex)] = str(cell_row.CellId)
-                fov_id_to_index_dict[str(cell_row.CellId)] = str(cell_row.CellIndex)
-                # Expected dict key of type str or bytes, got 'int'", 'Conversion failed for column 
+                fov_id_to_index_dict[str(cell_row.CellId)] = str(cell_row.CellIndex)  
 
             # add dictioinary back to fov dataframe
             df_fov.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
