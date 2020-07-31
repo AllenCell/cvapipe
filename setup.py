@@ -49,6 +49,7 @@ step_workflow_requirements = [
     "partd>=1.1.0",  # needed for dask[bag]
     "prefect>=0.12.5",
     "python-dateutil<=2.8.0",  # needed for quilt3 (datastep dependency)
+    "aics_dask_utils", # needed for multiple steps, e.g., DistributedHandler
 ]
 
 requirements = [
