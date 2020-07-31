@@ -6,8 +6,6 @@ import logging
 import sys
 import traceback
 from pathlib import Path
-
-import numpy as np
 import pandas as pd
 from lkaccess import LabKey, contexts
 
@@ -104,15 +102,36 @@ def create_aics_dataset(args: Args):
 
         # Merge the data
         data = data.merge(cell_line_data, how="left", on="CellLineId")
-
-        # Create dataframe of FOV + GoodCellIndicies
         data = data.drop_duplicates(subset=["CellId"], keep="first")
         data = data.reset_index(drop=True)
-        gci = data\
-            .groupby("FOVId")\
-            .CellIndex\
-            .apply(list)\
-            .reset_index(name="GoodCellIndicies")
+
+        # Temporary until datasets 83 and 84 have structure segmentations
+        data = data.loc[~data["DataSetId"].isin([83, 84])]
+
+        # create a fov data frame
+        df_fov = data.copy()
+        df_fov.drop_duplicates(subset=["FOVId"], keep="first", inplace=True)
+        df_fov.drop(["CellId", "CellIndex"], axis=1, inplace=True)
+
+        # add two new colums 
+        df_fov.assign(index_to_id_dict=None)
+        df_fov.assign(id_to_index_dict=None)
+
+        for row in df_fov.itertuples():
+            fov_id = row.FOVId
+            df_one_fov = data.query("FOVId==@fov_id")
+
+            # collect all cells from this fov, and create mapping
+            fov_index_to_id_dict = dict()
+            fov_id_to_index_dict = dict()
+            for cell_row in df_one_fov.itertuples():
+                fov_index_to_id_dict[str(cell_row.CellIndex)] = str(cell_row.CellId)
+                fov_id_to_index_dict[str(cell_row.CellId)] = str(cell_row.CellIndex)
+                # Expected dict key of type str or bytes, got 'int'", 'Conversion failed for column 
+
+            # add dictioinary back to fov dataframe
+            df_fov.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
+            df_fov.at[row.Index, 'id_to_index_dict'] = [fov_id_to_index_dict]
 
         # The next statement is a tested assumption as of 14 July 2020 that this is a
         # valid drop statement. No data is different between the "FOV" and "Cell"
@@ -131,26 +150,16 @@ def create_aics_dataset(args: Args):
         #                   f"FOVId: {name}", col,
         #                   len(group[col].unique()), len(group)
         #               )
-        #
-        data = data.drop_duplicates(subset=["FOVId"], keep="first")
-        data = data.reset_index(drop=True)
-        data = data.merge(gci, how="left", on="FOVId")
-
-        # Drop columns that are now not needed
-        data = data.drop(["CellId", "CellIndex"], axis=1)
-
-        # Temporary until datasets 83 and 84 have structure segmentations
-        data = data.loc[~data["DataSetId"].isin([83, 84])]
 
         # Sample the data
         if args.sample != 1.0:
             log.info(f"Sampling dataset with frac={args.sample}...")
-            data = data.groupby("CellLineId", group_keys=False)
-            data = data.apply(pd.DataFrame.sample, frac=args.sample)
-            data = data.reset_index(drop=True)
+            df_fov = df_fov.groupby("CellLineId", group_keys=False)
+            df_fov = df_fov.apply(pd.DataFrame.sample, frac=args.sample)
+            df_fov = df_fov.reset_index(drop=True)
 
         # Save to Parquet
-        data.to_parquet(args.save_path)
+        df_fov.to_parquet(args.save_path)
         log.info(f"Saved dataset manifest to: {args.save_path}")
 
     # Catch any exception
