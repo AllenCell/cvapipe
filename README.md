@@ -18,7 +18,7 @@ In general, all commands for this package will follow the format:
 * `command` is what you want that step to do, such as "run" or "push"
 
 **Available Steps**
-* `validate_dataset`: `cvapipe validate_dataset run --raw_dataset {path_to_dataset}`
+* `validate_dataset`: `cvapipe validatedataset run --raw_dataset {path_to_dataset}`
 will validate that the provided dataset can be processed by the downstream steps.
 
 ### Whole Pipeline

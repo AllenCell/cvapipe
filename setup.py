@@ -38,6 +38,7 @@ dev_requirements = [
 ]
 
 step_workflow_requirements = [
+    "cloudpickle>=1.5.0",  # needed for distributed
     "bokeh>=2.1.0",
     "dask[bag]>=2.21.0",
     "dask_jobqueue>=0.7.0",
@@ -49,7 +50,7 @@ step_workflow_requirements = [
     "partd>=1.1.0",  # needed for dask[bag]
     "prefect>=0.12.5",
     "python-dateutil<=2.8.0",  # needed for quilt3 (datastep dependency)
-    "aics_dask_utils", # needed for multiple steps, e.g., DistributedHandler
+    "aics_dask_utils",  # needed for multiple steps, e.g., DistributedHandler
 ]
 
 requirements = [
@@ -60,6 +61,10 @@ requirements = [
     "Pillow",
     "pyarrow",
     "tqdm",
+    "scipy",
+    "scikit-image",
+    "aicsimageio",
+    "aicsimageprocessing",
 ]
 
 
