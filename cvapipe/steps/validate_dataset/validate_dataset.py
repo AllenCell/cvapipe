@@ -41,6 +41,8 @@ class ValidateDataset(Step):
                 DatasetFields.StructureSegmentationReadPath,
             ],
             metadata_columns=[
+                DatasetFields.CellId,
+                DatasetFields.CellIndex,
                 DatasetFields.FOVId,
                 DatasetFields.CellLine,
                 DatasetFields.Gene,
@@ -102,7 +104,6 @@ class ValidateDataset(Step):
             required_fields=[
                 *self.filepath_columns,
                 *self.metadata_columns,
-                DatasetFields.GoodCellIndicies,
             ],
         )
 
