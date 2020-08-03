@@ -102,64 +102,23 @@ def create_aics_dataset(args: Args):
 
         # Merge the data
         data = data.merge(cell_line_data, how="left", on="CellLineId")
+
+        # TODO: still need to understand where duplicates come from
         data = data.drop_duplicates(subset=["CellId"], keep="first")
         data = data.reset_index(drop=True)
 
         # Temporary until datasets 83 and 84 have structure segmentations
         data = data.loc[~data["DataSetId"].isin([83, 84])]
 
-        # create a fov data frame
-        df_fov = data.copy()
-        df_fov.drop_duplicates(subset=["FOVId"], keep="first", inplace=True)
-        df_fov.drop(["CellId", "CellIndex"], axis=1, inplace=True)
-
-        # add two new colums 
-        df_fov.assign(index_to_id_dict=None)
-        df_fov.assign(id_to_index_dict=None)
-
-        for row in df_fov.itertuples():
-            fov_id = row.FOVId
-            df_one_fov = data.query("FOVId==@fov_id")
-
-            # collect all cells from this fov, and create mapping
-            fov_index_to_id_dict = dict()
-            fov_id_to_index_dict = dict()
-            for cell_row in df_one_fov.itertuples():
-                # Cast to string so that the values can be valid dictionary keys
-                fov_index_to_id_dict[str(cell_row.CellIndex)] = str(cell_row.CellId)
-                fov_id_to_index_dict[str(cell_row.CellId)] = str(cell_row.CellIndex)  
-
-            # add dictioinary back to fov dataframe
-            df_fov.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
-            df_fov.at[row.Index, 'id_to_index_dict'] = [fov_id_to_index_dict]
-
-        # The next statement is a tested assumption as of 14 July 2020 that this is a
-        # valid drop statement. No data is different between the "FOV" and "Cell"
-        # dataset besides the "CellId" and "CellIndex" columns
-        #
-        # from lkaccess import LabKey, contexts
-        # import pandas as pd
-        # lk = LabKey(contexts.PROD)
-        # data = pd.DataFrame(lk.dataset.get_pipeline_4_production_data())
-        #
-        # for name, group in data.groupby("FOVId"):
-        #     for col in group.columns:
-        #         if (len(group[col].unique()) != 1
-        #           and col not in ["CellId", "CellIndex"]):
-        #               print(
-        #                   f"FOVId: {name}", col,
-        #                   len(group[col].unique()), len(group)
-        #               )
-
         # Sample the data
         if args.sample != 1.0:
             log.info(f"Sampling dataset with frac={args.sample}...")
-            df_fov = df_fov.groupby("CellLineId", group_keys=False)
-            df_fov = df_fov.apply(pd.DataFrame.sample, frac=args.sample)
-            df_fov = df_fov.reset_index(drop=True)
+            data = data.groupby("CellLineId", group_keys=False)
+            data = data.apply(pd.DataFrame.sample, frac=args.sample)
+            data = data.reset_index(drop=True)
 
         # Save to Parquet
-        df_fov.to_parquet(args.save_path)
+        data.to_parquet(args.save_path)
         log.info(f"Saved dataset manifest to: {args.save_path}")
 
     # Catch any exception
