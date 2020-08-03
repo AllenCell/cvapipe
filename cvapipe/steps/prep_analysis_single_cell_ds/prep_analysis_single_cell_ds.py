@@ -13,6 +13,7 @@ import numpy as np
 import itertools
 import re
 from shutil import rmtree
+import pyarrow.parquet as pq
 from scipy.ndimage.measurements import center_of_mass
 from skimage.measure import regionprops, label
 from skimage.morphology import dilation, ball
@@ -562,7 +563,31 @@ class PrepAnalysisSingleCellDs(Step):
 
         # Handle dataset provided as string or path
         if isinstance(dataset, (str, Path)):
-            dataset = pd.read_csv(Path(dataset).expanduser().resolve(strict=True))
+            dataset = pq.read_table(Path(dataset).expanduser().resolve(strict=True))
+            dataset.to_pandas()
+
+        # create a fov data frame
+        fov_dataset = dataset.copy()
+        fov_dataset.drop_duplicates(subset=["FOVId"], keep="first", inplace=True)
+        fov_dataset.drop(["CellId", "CellIndex"], axis=1, inplace=True)
+
+        # add two new colums 
+        fov_dataset.assign(index_to_id_dict=None)
+        fov_dataset.assign(id_to_index_dict=None)
+
+        for row in fov_dataset.itertuples():
+            df_one_fov = dataset.query("FOVId==@fov_id")
+
+            # collect all cells from this fov, and create mapping
+            fov_index_to_id_dict = dict()
+            fov_id_to_index_dict = dict()
+            for cell_row in df_one_fov.itertuples():
+                fov_index_to_id_dict[cell_row.CellIndex] = cell_row.CellId
+                fov_id_to_index_dict[cell_row.CellId] = cell_row.CellIndex  
+
+            # add dictioinary back to fov dataframe
+            fov_dataset.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
+            fov_dataset.at[row.Index, 'id_to_index_dict'] = [fov_id_to_index_dict]
 
         # Log original length of cell dataset
         log.info(f"Original dataset length: {len(dataset)}")
@@ -575,11 +600,11 @@ class PrepAnalysisSingleCellDs(Step):
         with DistributedHandler(distributed_executor_address) as handler:
             # Start processing
             futures = handler.client.map(
-                self._generate_standardized_fov_array,
+                self._single_cell_gen_one_fov,
                 # Convert dataframe iterrows into two lists of items to iterate over
                 # One list will be row index
                 # One list will be the pandas series of every row
-                *zip(*list(dataset.iterrows())),
+                *zip(*list(fov_dataset.iterrows())),
                 # Pass the other parameters as list of the same thing for each
                 # mapped function call
                 [single_cell_dir for i in range(len(dataset))],
