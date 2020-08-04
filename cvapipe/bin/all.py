@@ -70,6 +70,7 @@ class All:
         """
         # Initalize steps
         validate_dataset = steps.ValidateDataset()
+        prep_analysis_sc = steps.PrepAnalysisSingleCellDs()
 
         # Choose executor
         if debug:
@@ -122,7 +123,11 @@ class All:
 
         # Configure your flow
         with Flow("cvapipe") as flow:
-            validate_dataset(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
+            validated_data_path = validate_dataset(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
+
+            single_cell_ds = prep_analysis_sc(
+                dataset=validated_data_path,
+                **kwargs)
 
         # Run flow and get ending state
         state = flow.run(executor=exe)
