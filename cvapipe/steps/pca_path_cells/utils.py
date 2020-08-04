@@ -24,15 +24,15 @@ def find_closest_cells(
     looks through df and finds N closest cells (rows) to loc
     using all dist_cols as equally weighted embedding dimensions
     metric can be any string that works with scipy.spatial.distance.cdist
- 
+
     Returns a len(N_cells) df of cell ids and columns matching dist_cols_pattern
     cells are sorted by distance and also have an additional columns of overall distance
     """
 
     loc_2d = np.expand_dims(loc, 0)
-    dists = cdist(df[dist_cols], loc_2d, metric)
+    dists = np.squeeze(cdist(df[dist_cols], loc_2d, metric))
     dist_col = f"{metric} distance to loc"
-    df_dists = pd.DataFrame({dist_col: np.squeeze(dists), "loc": [str(loc)] * len(df),})
+    df_dists = pd.DataFrame({dist_col: dists, "loc": [str(loc)] * len(df)})
 
     df_ids_and_dims = df[[id_col, *dist_cols]]
 

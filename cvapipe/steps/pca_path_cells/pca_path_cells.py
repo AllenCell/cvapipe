@@ -31,7 +31,8 @@ class PcaPathCells(Step):
     def run(
         self,
         pca_csv_loc=Path(
-            "/allen/aics/assay-dev/MicroscopyOtherData/Viana/forCaleb/variance/05202020_Align-IND_Chirality-OFF/manifest.csv"
+            "/allen/aics/assay-dev/MicroscopyOtherData/Viana/forCaleb/"
+            "variance/05202020_Align-IND_Chirality-OFF/manifest.csv"
         ),
         pcs=[1, 2, 3, 4, 5, 6, 7, 8],
         path=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
@@ -51,7 +52,7 @@ class PcaPathCells(Step):
         **kwargs,
     ):
         """
-        Look through PCA embeddings of cells and find groups of cells closest to PC axes.
+        Look through PCA embeddings of cells to find groups of cells closest to PC axes.
 
         Protected Parameters
         --------------------
@@ -69,7 +70,8 @@ class PcaPathCells(Step):
         ----------
         pca_csv_loc: pathlib.Path
             Location of csv containing pca embeddings of cells
-            Default: Path("/allen/aics/assay-dev/MicroscopyOtherData/Viana/forCaleb/variance/05202020_Align-IND_Chirality-OFF/manifest.csv")
+            Default: Path("/allen/aics/assay-dev/MicroscopyOtherData/Viana/forCaleb/"\
+                          "variance/05202020_Align-IND_Chirality-OFF/manifest.csv")
         pcs: List[int]
             Which pcs do we want to trace through
             Default: [1,2,3,4,5,6,7,8]
@@ -89,7 +91,7 @@ class PcaPathCells(Step):
                 'DNA_MEM_PC8'
             ]
         metric: str
-            How do we compute distance? This kwarg is passed to scipy.spatial.distance.cdist
+            How do we compute distance? Passed to scipy.spatial.distance.cdist
             Default: "euclidean"
         id_col: str
             Which column in `pca_csv_loc` is used for unique cell ids?
