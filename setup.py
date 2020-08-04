@@ -58,6 +58,7 @@ requirements = [
     "pandas",
     "Pillow",
     "pyarrow",
+    "scipy",
     "tqdm",
 ]
 
