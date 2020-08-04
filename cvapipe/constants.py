@@ -3,6 +3,8 @@
 
 
 class DatasetFields:
+    CellId = "CellId"
+    CellIndex = "CellIndex"
     CellLine = "CellLine"
     CellLineId = "CellLineId"
     CellLineName = "CellLineId/Name"
@@ -17,7 +19,6 @@ class DatasetFields:
     DataSetId = "DataSetId"
     FOVId = "FOVId"
     Gene = "Gene"
-    GoodCellIndicies = "GoodCellIndicies"
     InstrumentId = "InstrumentId"
     MembraneContourFileId = "MembraneContourFileId"
     MembraneContourFilename = "MembraneContourFilename"

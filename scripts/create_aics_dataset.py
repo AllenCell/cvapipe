@@ -6,8 +6,6 @@ import logging
 import sys
 import traceback
 from pathlib import Path
-
-import numpy as np
 import pandas as pd
 from lkaccess import LabKey, contexts
 
@@ -105,39 +103,9 @@ def create_aics_dataset(args: Args):
         # Merge the data
         data = data.merge(cell_line_data, how="left", on="CellLineId")
 
-        # Create dataframe of FOV + GoodCellIndicies
+        # TODO: still need to understand where duplicates come from
         data = data.drop_duplicates(subset=["CellId"], keep="first")
         data = data.reset_index(drop=True)
-        gci = data\
-            .groupby("FOVId")\
-            .CellIndex\
-            .apply(list)\
-            .reset_index(name="GoodCellIndicies")
-
-        # The next statement is a tested assumption as of 14 July 2020 that this is a
-        # valid drop statement. No data is different between the "FOV" and "Cell"
-        # dataset besides the "CellId" and "CellIndex" columns
-        #
-        # from lkaccess import LabKey, contexts
-        # import pandas as pd
-        # lk = LabKey(contexts.PROD)
-        # data = pd.DataFrame(lk.dataset.get_pipeline_4_production_data())
-        #
-        # for name, group in data.groupby("FOVId"):
-        #     for col in group.columns:
-        #         if (len(group[col].unique()) != 1
-        #           and col not in ["CellId", "CellIndex"]):
-        #               print(
-        #                   f"FOVId: {name}", col,
-        #                   len(group[col].unique()), len(group)
-        #               )
-        #
-        data = data.drop_duplicates(subset=["FOVId"], keep="first")
-        data = data.reset_index(drop=True)
-        data = data.merge(gci, how="left", on="FOVId")
-
-        # Drop columns that are now not needed
-        data = data.drop(["CellId", "CellIndex"], axis=1)
 
         # Temporary until datasets 83 and 84 have structure segmentations
         data = data.loc[~data["DataSetId"].isin([83, 84])]
