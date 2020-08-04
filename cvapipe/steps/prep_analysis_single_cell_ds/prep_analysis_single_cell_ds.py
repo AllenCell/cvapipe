@@ -564,7 +564,11 @@ class PrepAnalysisSingleCellDs(Step):
         # Handle dataset provided as string or path
         if isinstance(dataset, (str, Path)):
             dataset = pq.read_table(Path(dataset).expanduser().resolve(strict=True))
-            dataset.to_pandas()
+            dataset = dataset.to_pandas()
+
+        # HACK: for some reason the structure segmentation read path is empty
+        # HACK: temporary solution, use membrane seg as fake structure seg
+        dataset['StructureSegmentationReadPath'] = dataset['MembraneSegmentationReadPath']
 
         # create a fov data frame
         fov_dataset = dataset.copy()
@@ -576,7 +580,7 @@ class PrepAnalysisSingleCellDs(Step):
         fov_dataset.assign(id_to_index_dict=None)
 
         for row in fov_dataset.itertuples():
-            df_one_fov = dataset.query("FOVId==@fov_id")
+            df_one_fov = dataset.query("FOVId==@row.FOVId")
 
             # collect all cells from this fov, and create mapping
             fov_index_to_id_dict = dict()
