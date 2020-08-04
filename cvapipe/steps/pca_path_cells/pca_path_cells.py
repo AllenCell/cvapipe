@@ -54,18 +54,6 @@ class PcaPathCells(Step):
         """
         Look through PCA embeddings of cells to find groups of cells closest to PC axes.
 
-        Protected Parameters
-        --------------------
-        distributed_executor_address: Optional[str]
-            An optional executor address to pass to some computation engine.
-        clean: bool
-            Should the local staging directory be cleaned prior to this run.
-            Default: False (Do not clean)
-        debug: bool
-            A debug flag for the developer to use to manipulate how much data runs,
-            how it is processed, etc.
-            Default: False (Do not debug)
-
         Parameters
         ----------
         pca_csv_loc: pathlib.Path
@@ -102,7 +90,8 @@ class PcaPathCells(Step):
 
         Returns
         -------
-        result: self.manifest
+        result: pathlib.Path
+            Path to manifest
         """
 
         self.manifest = pd.DataFrame(columns=["PC", "dataframe_path"])
