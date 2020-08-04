@@ -104,9 +104,8 @@ class PcaPathCells(Step):
         """
 
         self.manifest = pd.DataFrame(columns=["PC", "dataframe_path"])
-        pc_path_dir = (self.step_local_staging_dir / "pc_paths").mkdir(
-            parents=True, exist_ok=True
-        )
+        pc_path_dir = self.step_local_staging_dir / "pc_paths"
+        pc_path_dir.mkdir(parents=True, exist_ok=True)
 
         # TODO change this filepath location to an upstream step
         df_pca = pd.read_csv(pca_csv_loc)
@@ -125,6 +124,12 @@ class PcaPathCells(Step):
             fpath = pc_path_dir / f"pca_{pc}_path_cells.csv"
             df_cells.to_csv(fpath, index=False)
 
-            self.manifest = self.manifest.append({"PC": pc, "dataframe_path": fpath})
+            self.manifest = self.manifest.append(
+                {"PC": pc, "dataframe_path": fpath}, ignore_index=True
+            )
 
-        return self.manifest
+        self.manifest = self.manifest.reset_index(drop=True)
+        manifest_save_path = self.step_local_staging_dir / "manifest.csv"
+        self.manifest.to_csv(manifest_save_path)
+
+        return manifest_save_path
