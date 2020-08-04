@@ -41,6 +41,8 @@ class ValidateDataset(Step):
                 DatasetFields.StructureSegmentationReadPath,
             ],
             metadata_columns=[
+                DatasetFields.CellId,
+                DatasetFields.CellIndex,
                 DatasetFields.FOVId,
                 DatasetFields.CellLine,
                 DatasetFields.Gene,
@@ -99,11 +101,7 @@ class ValidateDataset(Step):
         # Check the dataset for the required columns
         dataset_utils.check_required_fields(
             dataset=dataset,
-            required_fields=[
-                *self.filepath_columns,
-                *self.metadata_columns,
-                DatasetFields.GoodCellIndicies,
-            ],
+            required_fields=[*self.filepath_columns, *self.metadata_columns],
         )
 
         # Save manifest to CSV
