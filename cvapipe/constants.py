@@ -17,7 +17,6 @@ class DatasetFields:
     DataSetId = "DataSetId"
     FOVId = "FOVId"
     Gene = "Gene"
-    GoodCellIndicies = "GoodCellIndicies"
     InstrumentId = "InstrumentId"
     MembraneContourFileId = "MembraneContourFileId"
     MembraneContourFilename = "MembraneContourFilename"

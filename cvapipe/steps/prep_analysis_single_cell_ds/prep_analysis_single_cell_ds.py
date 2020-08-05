@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import itertools
 import re
+import time
 from shutil import rmtree
 import pyarrow.parquet as pq
 from scipy.ndimage.measurements import center_of_mass
@@ -73,7 +74,6 @@ class PrepAnalysisSingleCellDs(Step):
 
         # Don't use dask for image reading
         aicsimageio.use_dask(False)
-
         ###############################
         standard_res_qcb = 0.108
         dist_cutoff = 85
@@ -92,6 +92,8 @@ class PrepAnalysisSingleCellDs(Step):
         else:
             raw_fn = row.AlignedImageReadPath
 
+        log.info(f"ready to process FOV: {row.FOVId}")
+
         # verify filepaths 
         try:
             assert os.path.exists(raw_fn), f"original image not found: {raw_fn}"
@@ -107,9 +109,12 @@ class PrepAnalysisSingleCellDs(Step):
 
         # get the raw image and split into different channels
         raw_reader = AICSImage(raw_fn)
+        start_time = time.time()
         raw_mem0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumber638) 
         raw_nuc0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumber405) 
-        raw_str0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumberStruct)
+        raw_str0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumber488)
+        total_t = time.time() - start_time
+        log.info(f"Raw image load in: {total_t} sec")
 
         '''
         # because the seg results are save in one file, MembraneSegmentationFilename
@@ -140,6 +145,8 @@ class PrepAnalysisSingleCellDs(Step):
         # get structure segmentation
         str_seg = np.squeeze(imread(row.StructureSegmentationReadPath))
 
+        log.info(f"Raw image and segmentation load successfully: {row.FOVId}")
+
         #################################################################
         # part 2: make sure the cell/nucleus segmentation not failed terribly
         # remove the bad cells when possible (e.g., very small cells)
@@ -165,8 +172,9 @@ class PrepAnalysisSingleCellDs(Step):
             # no record in labkey (e.g., manually removed based on user's feedback)
             all_cell_index_list = list(np.unique(mem_seg_whole[mem_seg_whole > 0]))
             full_set_with_no_boundary = set(all_cell_index_list) - set(bd_idx)
-            valid_cell = list(full_set_with_no_boundary 
-                              - set(row.index_to_id_dict.keys()))
+            set_not_in_labkey = full_set_with_no_boundary - \
+                set(row.index_to_id_dict[0].keys())
+            valid_cell = list(full_set_with_no_boundary - set_not_in_labkey)
 
             # single cell QC
             valid_cell_0 = valid_cell.copy() 
@@ -193,7 +201,8 @@ class PrepAnalysisSingleCellDs(Step):
                     full_fov_pass = 0
 
             # if only one cell left or no cell left, just throw it away
-            assert len(valid_cell_0) > 1, \
+            # HACK: use 0 during testing, change to 1 in real run
+            assert len(valid_cell_0) > 0, \
                 f"very few cells left after single cell QC in {row.FOVId}"
 
             # assign the tempory list variable back
@@ -201,7 +210,7 @@ class PrepAnalysisSingleCellDs(Step):
 
         except AssertionError as e:
             log.info(
-                f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
+                f"Skip single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
             return SingleCellGenOneFOVFailure(row.FOVId, False, str(e))
         except Exception as e:
@@ -209,6 +218,8 @@ class PrepAnalysisSingleCellDs(Step):
                 f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
             return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
+
+        log.info(f"single cell QC done in FOV: {row.FOVId}")
 
         try:
             ##########################################################################
@@ -240,7 +251,7 @@ class PrepAnalysisSingleCellDs(Step):
                 # this is always valid since indices not in index_to_id_dict.keys() 
                 # have been removed
                 index_to_cellid_map[this_cell_index] = \
-                    row.index_to_id_dict[this_cell_index]
+                    row.index_to_id_dict[0][this_cell_index]
             for index_dict, cellid_dict in index_to_cellid_map.items():
                 cellid_to_index_map[cellid_dict] = index_dict 
 
@@ -296,6 +307,8 @@ class PrepAnalysisSingleCellDs(Step):
             if edge_fov_flag:
                 true_edge_cells = find_true_edge_cells(mem_seg_whole_valid)
 
+            log.info(f"FOV info is done: {row.FOVId}, ready to loop through cells")
+
             # loop through all valid cells in this fov
             df_cell_meta = []
             for list_idx, this_cell_index in enumerate(valid_cell):
@@ -341,7 +354,7 @@ class PrepAnalysisSingleCellDs(Step):
                 cell_id = index_to_cellid_map[this_cell_index]
 
                 # make the path for saving single cell crop result
-                thiscell_path = single_cell_dir / str(cell_id)
+                thiscell_path = single_cell_dir / Path(str(cell_id))
                 if os.path.isdir(thiscell_path):
                     rmtree(thiscell_path)
                 os.mkdir(thiscell_path)
@@ -356,8 +369,8 @@ class PrepAnalysisSingleCellDs(Step):
 
                 # define a large ROI based on bounding box
                 roi = [max(z_range[0] - 10, 0), min(z_range[-1] + 12, mem_seg.shape[0]),
-                       max(y_range[0] - 40, 0), min(y_range[-1] + 40, mem_seg.shape[1]),
-                       max(x_range[0] - 40, 0), min(x_range[-1] + 40, mem_seg.shape[2])]
+                        max(y_range[0] - 40, 0), min(y_range[-1] + 40, mem_seg.shape[1]),
+                        max(x_range[0] - 40, 0), min(x_range[-1] + 40, mem_seg.shape[2])]
 
                 # roof augmentation
                 mem_nearly_top_z = int(z_range[0] + round(0.75 * (
@@ -366,7 +379,7 @@ class PrepAnalysisSingleCellDs(Step):
                 mem_top_mask[mem_nearly_top_z:, :, :] = \
                     mem_seg[mem_nearly_top_z:, :, :] > 0                  
                 mem_top_mask_dilate = dilation(mem_top_mask > 0,
-                                               selem=np.ones((21, 1, 1), dtype=np.byte))
+                                                selem=np.ones((21, 1, 1), dtype=np.byte))
                 mem_top_mask_dilate[:mem_nearly_top_z, :, :] = \
                     mem_seg[: mem_nearly_top_z, :, :] > 0
 
@@ -381,12 +394,12 @@ class PrepAnalysisSingleCellDs(Step):
 
                 mem_top_mask_dilate = mem_top_mask_dilate.astype(np.uint8)
                 mem_top_mask_dilate = mem_top_mask_dilate[roi[0]:roi[1], roi[2]:roi[3], 
-                                                          roi[4]:roi[5]]
+                                                            roi[4]:roi[5]]
                 mem_top_mask_dilate[mem_top_mask_dilate > 0] = 255
 
                 # crop str seg (without roof augmentation)
                 str_seg_crop = str_seg[roi[0]:roi[1], roi[2]:roi[3], 
-                                       roi[4]:roi[5]].astype(np.uint8)
+                                        roi[4]:roi[5]].astype(np.uint8)
                 str_seg_crop[mem_seg < 1] = 0
                 str_seg_crop[str_seg_crop > 0] = 255
 
@@ -402,7 +415,8 @@ class PrepAnalysisSingleCellDs(Step):
                     mem_seg,
                     mem_top_mask_dilate,
                     str_seg_crop,
-                    str_seg_crop_roof], axis=0),
+                    str_seg_crop_roof], axis=0)
+                print(all_seg.shape)
                 all_seg = np.expand_dims(np.transpose(all_seg, (1, 0, 2, 3)), axis=0)
 
                 crop_seg_path = thiscell_path / 'segmentation.ome.tif'
@@ -432,9 +446,9 @@ class PrepAnalysisSingleCellDs(Step):
                     stats = regionprops(dna_label)
                     region_size = [stats[i]['area'] for i in range(dna_num)]
                     large_two = sorted(range(len(region_size)), 
-                                       key=lambda sub: region_size[sub])[-2:]
+                                        key=lambda sub: region_size[sub])[-2:]
                     dis = euc_dist_3d(stats[large_two[0]]['centroid'], 
-                                      stats[large_two[1]]['centroid'])
+                                        stats[large_two[1]]['centroid'])
                     if dis > dist_cutoff:
                         sz1 = stats[large_two[0]]['area']
                         sz2 = stats[large_two[1]]['area']
@@ -450,8 +464,8 @@ class PrepAnalysisSingleCellDs(Step):
                 name_dict = {
                     "crop_raw": ['dna', 'membrane', 'structure'],
                     "crop_seg": ['dna_segmentation', 'membrane_segmentation',
-                                 'membrane_segmentation', 'struct_segmentation',
-                                 'struct_segmentation']
+                                    'membrane_segmentation', 'struct_segmentation',
+                                    'struct_segmentation']
                 }
 
                 # out for mitotic classifier
@@ -501,6 +515,7 @@ class PrepAnalysisSingleCellDs(Step):
                 f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
             return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
+        
 
     @log_run_params
     def run(
@@ -568,16 +583,21 @@ class PrepAnalysisSingleCellDs(Step):
 
         # HACK: for some reason the structure segmentation read path is empty
         # HACK: temporary solution, use membrane seg as fake structure seg
-        dataset['StructureSegmentationReadPath'] = dataset['MembraneSegmentationReadPath']
+        dataset['StructureSegmentationReadPath'] = \
+            dataset['MembraneSegmentationReadPath']
+
+        # HACK: AlignmentReadPath should exist in final query
+        if 'AlignedImageReadPath' not in dataset.columns:
+            dataset = dataset.assign(AlignedImageReadPath=None)
 
         # create a fov data frame
         fov_dataset = dataset.copy()
         fov_dataset.drop_duplicates(subset=["FOVId"], keep="first", inplace=True)
         fov_dataset.drop(["CellId", "CellIndex"], axis=1, inplace=True)
 
-        # add two new colums 
-        fov_dataset.assign(index_to_id_dict=None)
-        fov_dataset.assign(id_to_index_dict=None)
+        # add two new colums
+        fov_dataset['index_to_id_dict'] = np.empty((len(fov_dataset), 0)).tolist()
+        fov_dataset['id_to_index_dict'] = np.empty((len(fov_dataset), 0)).tolist()
 
         for row in fov_dataset.itertuples():
             df_one_fov = dataset.query("FOVId==@row.FOVId")
@@ -587,8 +607,8 @@ class PrepAnalysisSingleCellDs(Step):
             fov_id_to_index_dict = dict()
             for cell_row in df_one_fov.itertuples():
                 fov_index_to_id_dict[cell_row.CellIndex] = cell_row.CellId
-                fov_id_to_index_dict[cell_row.CellId] = cell_row.CellIndex  
-
+                fov_id_to_index_dict[cell_row.CellId] = cell_row.CellIndex
+         
             # add dictioinary back to fov dataframe
             fov_dataset.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
             fov_dataset.at[row.Index, 'id_to_index_dict'] = [fov_id_to_index_dict]
@@ -599,14 +619,27 @@ class PrepAnalysisSingleCellDs(Step):
         # Create single cell directory
         single_cell_dir = self.step_local_staging_dir / single_cell_path
         single_cell_dir.mkdir(exist_ok=True)
+        log.info(f"single cells will be saved into: {single_cell_dir}")
 
+        for ridx, row in fov_dataset.iterrows():
+            x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
+
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor() as exe:
+            results = exe.map(
+                self._single_cell_gen_one_fov,
+                *zip(*list(fov_dataset.iterrows())),
+                [single_cell_dir for i in range(len(dataset))],
+                [overwrite for i in range(len(dataset))]
+            )
+        # list has no .key()
         # Process each row
         with DistributedHandler(distributed_executor_address) as handler:
             # Start processing
             futures = handler.client.map(
                 self._single_cell_gen_one_fov,
                 # Convert dataframe iterrows into two lists of items to iterate over
-                # One list will be row index
+                # One list will be row 2aindex
                 # One list will be the pandas series of every row
                 *zip(*list(fov_dataset.iterrows())),
                 # Pass the other parameters as list of the same thing for each
