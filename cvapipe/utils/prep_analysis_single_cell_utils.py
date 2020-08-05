@@ -4,12 +4,37 @@ from skimage.morphology import dilation, ball
 from skimage.measure import label
 
 
-def getLargestCC(labels):
+def get_largest_cc(labels):
+    """
+    find the largest connected component in a labeled image
+
+    Parameters
+    ----------
+    label: numpy.array
+        a labeled image
+
+    Returns
+    -------
+    largestCC: a binary image of the same size as input, only
+        the largest connect component is kept in the image
+    """
     largestCC = labels == np.argmax(np.bincount(labels.flat)[1:]) + 1
     return largestCC
 
 
 def find_true_edge_cells(mem_seg_whole_valid):
+    """
+    find the indices of true edge cells
+
+    Parameters
+    ----------
+    mem_seg_whole_valid: numpy.array
+        a 3D labeled image of cell segmentation
+
+    Returns
+    -------
+    edge_idx: a list of indices of edge cells
+    """
 
     mem_coverage = np.amax(mem_seg_whole_valid, axis=0)
     FOV_size = mem_coverage.shape[0] * mem_coverage.shape[1]
@@ -45,7 +70,7 @@ def find_true_edge_cells(mem_seg_whole_valid):
     # extract cover slip object
     bg_in_body_chunk = body_chunk == 0
     bg_label_in_body_chunk = label(bg_in_body_chunk)
-    outer_bg = getLargestCC(bg_label_in_body_chunk)
+    outer_bg = get_largest_cc(bg_label_in_body_chunk)
 
     # find cells touching cover slip
     outer_bg_cover = dilation(outer_bg, ball(5))
@@ -55,6 +80,23 @@ def find_true_edge_cells(mem_seg_whole_valid):
 
 
 def build_one_cell_for_classification(crop_raw, mem_seg, down_ratio=0.5):
+    """
+    build a single file for one cell, to be used by mitotic classifier
+
+    Parameters
+    ----------
+    crop_raw: numpy.array
+        croped raw image (multi-channel with order: dna, mem, struct)
+    mem_seg: numpy.array
+        cell segmentation of the cell (same ZYX shape as crop_raw)
+    down_ratio: float
+        the downsampling ratio the mitotic classifier is trained on
+        Defaul: 0.5
+
+    Returns
+    -------
+    edge_idx: a list of indices of edge cells
+    """
 
     # raw image normalization
     img_raw = crop_raw[0, :, 0:2, :, :].astype(np.float32)

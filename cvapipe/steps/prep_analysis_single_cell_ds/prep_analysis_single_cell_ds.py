@@ -5,12 +5,13 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Union, NamedTuple
+from typing import Dict, List, Optional, Union, NamedTuple, Int
 
 import dask.dataframe as dd
 import pandas as pd
 import numpy as np
 import itertools
+import math
 import re
 import time
 from shutil import rmtree
@@ -63,27 +64,35 @@ class PrepAnalysisSingleCellDs(Step):
         super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
 
     @staticmethod
-    def _single_cell_gen_one_fov(
-        row_index: int,
-        row: pd.Series,
-        single_cell_dir: Path,
-        overwrite: bool,
-    ) -> Union[SingleCellGenOneFOVResult, SingleCellGenOneFOVFailure]:
-        # TODO: currently, overwrite flag is not working. 
-        # need to think more on how to deal with overwrite
+    def _load_image_and_seg(
+        row: pd.Series
+    ) -> List(Path, np.ndarray, np.ndarray, 
+              np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+        """
+        load images and segmentations
 
-        # Don't use dask for image reading
-        aicsimageio.use_dask(False)
-        ###############################
-        standard_res_qcb = 0.108
-        dist_cutoff = 85
-        min_mem_size = 70000
-        min_nuc_size = 10000
-        ###############################
+        Parameters:
+        ----------------------------
+        row: pd.Series
+            the row being processed from the whole fov dataset
 
-        ################################################################
-        # Part 1: load images and segmentations
-        ################################################################
+        Return:
+        -----------------------------
+        raw_fn: Path
+            path to raw image
+        raw_mem0: np.ndarray
+            raw membrane image
+        raw_nuc0: np.ndarray
+            raw nucleue image
+        raw_struct0: np.ndarray
+            raw structure image
+        mem_seg_whole: np.ndarray
+            cell segmentation image
+        nuc_seg_whole: np.ndarray
+            nucleus segmentation image
+        struct_seg_whole: np.ndarray
+            structure segmentation image
+        """
 
         # select proper raw file to use
         # (pipeline 4.4 needs to use aligned images, but pipline 4.0-4.3 does not)
@@ -92,27 +101,23 @@ class PrepAnalysisSingleCellDs(Step):
         else:
             raw_fn = row.AlignedImageReadPath
 
-        log.info(f"ready to process FOV: {row.FOVId}")
-
         # verify filepaths 
-        try:
-            assert os.path.exists(raw_fn), f"original image not found: {raw_fn}"
-            assert os.path.exists(row.MembraneSegmentationReadPath),\
-                f"cell segmentation not found: {row.MembraneSegmentationReadPath}"
-            assert os.path.exists(row.StructureSegmentationReadPath),\
-                f"structure segmentation not found {row.StructureSegmentationReadPath}"
-        except AssertionError as e:
-            log.info(
-                f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
-            )
-            return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
+        assert os.path.exists(raw_fn), f"original image not found: {raw_fn}"
+        assert os.path.exists(row.MembraneSegmentationReadPath),\
+            f"cell segmentation not found: {row.MembraneSegmentationReadPath}"
+        assert os.path.exists(row.StructureSegmentationReadPath),\
+            f"structure segmentation not found {row.StructureSegmentationReadPath}"        
 
         # get the raw image and split into different channels
-        raw_reader = AICSImage(raw_fn)
         start_time = time.time()
-        raw_mem0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumber638) 
-        raw_nuc0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumber405) 
-        raw_str0 = raw_reader.get_image_data("ZYX", S=0, T=0, C=row.ChannelNumber488)
+        raw_data = np.squeeze(AICSImage(raw_fn).data)
+        raw_mem0 = raw_data[row.ChannelNumber638, :, :, :]
+        raw_nuc0 = raw_data[row.ChannelNumber405, :, :, :]
+        # find valid structure channel index
+        if math.isnan(row.ChannelNumber561):
+            raw_struct0 = raw_data[row.ChannelNumber488, :, :, :]
+        else:
+            raw_struct0 = raw_data[row.ChannelNumber561, :, :, :]
         total_t = time.time() - start_time
         log.info(f"Raw image load in: {total_t} sec")
 
@@ -143,75 +148,365 @@ class PrepAnalysisSingleCellDs(Step):
         mem_seg_whole = np.squeeze(imread(row.MembraneSegmentationReadPath))
 
         # get structure segmentation
-        str_seg = np.squeeze(imread(row.StructureSegmentationReadPath))
+        struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
 
-        log.info(f"Raw image and segmentation load successfully: {row.FOVId}")
+        return [raw_fn, raw_mem0, raw_nuc0, raw_struct0, mem_seg_whole, 
+                nuc_seg_whole, struct_seg_whole]
 
-        #################################################################
-        # part 2: make sure the cell/nucleus segmentation not failed terribly
-        # remove the bad cells when possible (e.g., very small cells)
-        ##################################################################
+    @staticmethod
+    def _single_cell_qc_in_one_fov(
+        mem_seg_whole: np.ndarray,
+        nuc_seg_whole: np.ndarray,
+        row: pd.Series
+    ) -> List(Int, List):
+        """
+        make sure the cell/nucleus segmentation not failed terribly
+        and remove the bad cells when possible (e.g., very small cells)
+
+        Parameters:
+        ----------------------------
+        mem_seg_whole: np.ndarray
+            labeled image of cell segmentation
+        nuc_seg_whole: np.ndarray
+            labeled image of nucleus segmentation
+        row: pd.Series
+            the row being processed from the whole fov dataset
+
+        Return:
+        -----------------------------
+        full_fov_pass: Int
+            flag for whether all cells in this fov can be trusted
+        valid_cell: List
+            the list of CellIndex after removing bad cells
+        """
+
+        ################################################################
+        min_mem_size = 70000
+        min_nuc_size = 10000
+        ################################################################
 
         # flag for any segmented object in this FOV removed as bad cells
         full_fov_pass = 1
+
+        # double check big failure, quick reject
+        assert mem_seg_whole.max() > 3 and nuc_seg_whole.max() > 3,\
+            f"very few cells segmented in {row.MembraneSegmentationReadPath}"
+
+        # prune the results (remove cells touching image boundary)
+        boundary_mask = np.zeros_like(mem_seg_whole)
+        boundary_mask[:, :3, :] = 1
+        boundary_mask[:, -3:, :] = 1
+        boundary_mask[:, :, :3] = 1
+        boundary_mask[:, :, -3:] = 1
+        bd_idx = list(np.unique(mem_seg_whole[boundary_mask > 0]))
+
+        # maintain a valid cell list, initialize with all cells minus
+        # cells touching the image boundary, and minus cells with 
+        # no record in labkey (e.g., manually removed based on user's feedback)
+        all_cell_index_list = list(np.unique(mem_seg_whole[mem_seg_whole > 0]))
+        full_set_with_no_boundary = set(all_cell_index_list) - set(bd_idx)
+        set_not_in_labkey = full_set_with_no_boundary - \
+            set(row.index_to_id_dict[0].keys())
+        valid_cell = list(full_set_with_no_boundary - set_not_in_labkey)
+
+        # single cell QC
+        valid_cell_0 = valid_cell.copy() 
+        for list_idx, this_cell_index in enumerate(valid_cell):
+            single_mem = mem_seg_whole == this_cell_index
+            single_nuc = nuc_seg_whole == this_cell_index
+
+            # remove too small cells from valid cell list
+            if np.count_nonzero(single_mem) < min_mem_size or \
+               np.count_nonzero(single_nuc) < min_nuc_size:
+                valid_cell_0.remove(this_cell_index)
+                full_fov_pass = 0
+
+                # no need to go to next QC criteria
+                continue
+
+            # make sure the cell is not leaking to the bottom or top
+            z_range_single = np.where(np.any(single_mem, axis=(1, 2)))
+            single_min_z = z_range_single[0][0]
+            single_max_z = z_range_single[0][-1]
+
+            if single_min_z == 0 or single_max_z >= single_mem.shape[0] - 1:
+                valid_cell_0.remove(this_cell_index)
+                full_fov_pass = 0
+
+        # if only one cell left or no cell left, just throw it away
+        # HACK: use 0 during testing, change to 1 in real run
+        assert len(valid_cell_0) > 0, \
+            f"very few cells left after single cell QC in {row.FOVId}"
+
+        return [full_fov_pass, valid_cell]
+
+    @staticmethod
+    def _calculate_fov_info(
+        row: pd.Series,
+        valid_cell: List,
+        nuc_seg_whole: np.ndarray,
+        mem_seg_whole: np.ndarray,
+        raw_fn: Path
+    ) -> List:
+        """
+
+        calulate basic info related to the whole FOV
+
+        Parameter:
+        -----------------------
+        row: pd.Series
+            current row being processing from the fov dataset
+        valid_cell: List
+            the list of valid CellIndex
+        nuc_seg_whole: np.ndarray
+            labeled image of nucleus segmentation
+        mem_seg_whole: np.ndarray
+            labeled image of cell segmentation
+        raw_fn: Path
+            path to raw image
+
+        Return:
+        -----------------------
+        index_to_cellid_map: Dict
+            mapping from CellIndex to CellID
+        cellid_to_index_map: Dcit
+            mapping from CellId to CellIndex
+        index_to_centroid_map: Dict
+            mapping from CellIndex to its centroid position
+        stack_min_z: Int
+            the minimum z of all cells in this FOV
+        stack_max_z: Int
+             the maximum z of all cells in this FOV
+        true_edge_cells: List
+            the list of CellIndex that is truely on edge of the colony
+        """
+
+        # identify index and CellId 1:1 mapping
+        index_to_cellid_map = dict()
+        cellid_to_index_map = dict()
+        for list_idx, this_cell_index in enumerate(valid_cell):
+            # this is always valid since indices not in index_to_id_dict.keys() 
+            # have been removed
+            index_to_cellid_map[this_cell_index] = \
+                row.index_to_id_dict[0][this_cell_index]
+        for index_dict, cellid_dict in index_to_cellid_map.items():
+            cellid_to_index_map[cellid_dict] = index_dict 
+
+        # compute center of mass
+        index_to_centroid_map = dict()
+        center_list = center_of_mass(nuc_seg_whole > 0, nuc_seg_whole, valid_cell)
+        for list_idx, this_cell_index in enumerate(valid_cell):
+            index_to_centroid_map[this_cell_index] = center_list[list_idx]
+
+        # compute whole stack min/max z
+        mem_seg_whole_valid = np.zeros_like(mem_seg_whole)
+        for list_idx, this_cell_index in enumerate(valid_cell):
+            mem_seg_whole_valid[mem_seg_whole == this_cell_index] = this_cell_index
+        z_range_whole = np.where(np.any(mem_seg_whole_valid, axis=(1, 2)))
+        stack_min_z = z_range_whole[0][0]
+        stack_max_z = z_range_whole[0][-1]
+
+        # find true edge cells, the cells in the outer layer of a colony
+        true_edge_cells = []
+        edge_fov_flag = False
+        if row.ColonyPosition is None:
+            # parse colony position from file name
+            reg = re.compile('(-|_)((\d)?)(e)((\d)?)(-|_)')
+            if reg.search(os.path.basename(raw_fn)):
+                edge_fov_flag = True
+        else:
+            if row.ColonyPosition.lower() == 'edge':
+                edge_fov_flag = True
+
+        if edge_fov_flag:
+            true_edge_cells = find_true_edge_cells(mem_seg_whole_valid)
+
+        return [index_to_cellid_map, cellid_to_index_map, index_to_centroid_map,
+                stack_min_z, stack_max_z, true_edge_cells]
+
+    @staticmethod
+    def _get_roi_and_crop(
+        mem_seg: np.ndarray,
+        nuc_seg: np.ndarray,
+        struct_seg_whole: np.ndarray
+    ) -> List:
+        """
+        calculate roi based on cell segmentaiton, and get two
+        versions of crop segmentation (one with roof augmentation,
+        one without roof augmentation). 
+
+        Roof augmentation is artifical dilation of cell segmentation 
+        near top to make sure all structure near the top can be included
+
+        Paramter: 
+        ----------------------
+        mem_seg: np.ndarray
+            binary image of cell segmentation of this cell
+
+        nuc_seg: np.ndarray
+            binary image of nucleus segmentation of this cell
+
+        struct_seg_whole: np.ndarray
+            binary image of structure segmentation of this FOV
+
+        Return:
+        ----------------------
+        roi: List
+            roi to crop for this cell as a list of 
+            [left_z, right_z, left_y, right_y, left_x, right_x]
+
+        nuc_seg: np.ndarray,
+            cropped segmentation of nucleus
+        mem_seg: np.ndarray,
+            cropped segmentation of cell (no roof augmentation)
+        mem_top_mask_dilate: np.ndarray,
+            cropped segmentation of cell (with roof augmentation)
+        str_seg_crop: np.ndarray
+            cropped segmentation of structure (no roof augmentatiuon)
+        str_seg_crop_roof: np.ndarray
+            cropped segmentation of structure (with roof augmentatiuon)
+        """
+        # determine crop roi
+        z_range = np.where(np.any(mem_seg, axis=(1, 2)))
+        y_range = np.where(np.any(mem_seg, axis=(0, 2)))
+        x_range = np.where(np.any(mem_seg, axis=(0, 1)))
+        z_range = z_range[0]
+        y_range = y_range[0]
+        x_range = x_range[0]
+
+        # define a large ROI based on bounding box
+        roi = [max(z_range[0] - 10, 0), min(z_range[-1] + 12, mem_seg.shape[0]),
+               max(y_range[0] - 40, 0), min(y_range[-1] + 40, mem_seg.shape[1]),
+               max(x_range[0] - 40, 0), min(x_range[-1] + 40, mem_seg.shape[2])]
+
+        # roof augmentation
+        mem_nearly_top_z = int(z_range[0] + round(0.75 * (
+            z_range[-1] - z_range[0] + 1)))
+        mem_top_mask = np.zeros(mem_seg.shape, dtype=np.byte)
+        mem_top_mask[mem_nearly_top_z:, :, :] = \
+            mem_seg[mem_nearly_top_z:, :, :] > 0                  
+        mem_top_mask_dilate = dilation(mem_top_mask > 0,
+                                       selem=np.ones((21, 1, 1), dtype=np.byte))
+        mem_top_mask_dilate[:mem_nearly_top_z, :, :] = \
+            mem_seg[: mem_nearly_top_z, :, :] > 0
+
+        # crop mem/nuc seg
+        mem_seg = mem_seg.astype(np.uint8)
+        mem_seg = mem_seg[roi[0]:roi[1], roi[2]:roi[3], roi[4]:roi[5]]
+        mem_seg[mem_seg > 0] = 255
+
+        nuc_seg = nuc_seg.astype(np.uint8)
+        nuc_seg = nuc_seg[roi[0]:roi[1], roi[2]:roi[3], roi[4]:roi[5]]
+        nuc_seg[nuc_seg > 0] = 255
+
+        mem_top_mask_dilate = mem_top_mask_dilate.astype(np.uint8)
+        mem_top_mask_dilate = mem_top_mask_dilate[roi[0]:roi[1], roi[2]:roi[3], 
+                                                  roi[4]:roi[5]]
+        mem_top_mask_dilate[mem_top_mask_dilate > 0] = 255
+
+        # crop str seg (without roof augmentation)
+        str_seg_crop = struct_seg_whole[roi[0]:roi[1], roi[2]:roi[3], 
+                                        roi[4]:roi[5]].astype(np.uint8)
+        str_seg_crop[mem_seg < 1] = 0
+        str_seg_crop[str_seg_crop > 0] = 255
+
+        # crop str seg (with roof augmentation)
+        str_seg_crop_roof = struct_seg_whole[roi[0]:roi[1], roi[2]:roi[3], 
+                                             roi[4]:roi[5]].astype(np.uint8)
+        str_seg_crop_roof[mem_top_mask_dilate < 1] = 0
+        str_seg_crop_roof[str_seg_crop_roof > 0] = 255
+
+        return [roi, nuc_seg, mem_seg, mem_top_mask_dilate, 
+                str_seg_crop, str_seg_crop_roof]
+
+    @staticmethod
+    def _check_if_pair(nuc_seg: np.ndarray) -> Int:
+        """
+
+        check if this cell is a pair after division or not,
+        based on nucleus segmentation
+
+        Parameter:
+        -----------------------
+        nuc_seg: np.ndarray
+            cropped segmentation of nucleus
+
+        Return:
+        ------------------------
+        this_cell_is_pair: Int
+            flag for this cell being a pair or not
+        """
+        dist_cutoff = 85
+        dna_label, dna_num = label(nuc_seg > 0, return_num=True)
+
+        if dna_num < 2:
+            # certainly not pair if there is only one cc 
+            this_cell_is_pair = 0
+        else:
+            stats = regionprops(dna_label)
+            region_size = [stats[i]['area'] for i in range(dna_num)]
+            large_two = sorted(range(len(region_size)), 
+                               key=lambda sub: region_size[sub])[-2:]
+            dis = euc_dist_3d(stats[large_two[0]]['centroid'], 
+                              stats[large_two[1]]['centroid'])
+            if dis > dist_cutoff:
+                sz1 = stats[large_two[0]]['area']
+                sz2 = stats[large_two[1]]['area']
+                if sz1 / sz2 > 1.5625 or sz1 / sz2 < 0.64:
+                    # the two parts do not have comparable sizes
+                    this_cell_is_pair = 0
+                else:
+                    this_cell_is_pair = 1
+            else:
+                # not far apart enough
+                this_cell_is_pair = 0
+
+        return this_cell_is_pair
+
+    @staticmethod
+    def _single_cell_gen_one_fov(
+        self,
+        row_index: int,
+        row: pd.Series,
+        single_cell_dir: Path,
+        overwrite: bool,
+    ) -> Union[SingleCellGenOneFOVResult, SingleCellGenOneFOVFailure]:
+        # TODO: currently, overwrite flag is not working. 
+        # need to think more on how to deal with overwrite
+
+        ########################################
+        # parameters
+        ########################################
+        # Don't use dask for image reading
+        aicsimageio.use_dask(False)
+        standard_res_qcb = 0.108
+
+        log.info(f"ready to process FOV: {row.FOVId}")
+
+        ########################################
+        # load image and segmentation
+        ########################################
         try:
-            # double check big failure, quick reject
-            assert mem_seg_whole.max() > 3 and nuc_seg_whole.max() > 3,\
-                f"very few cells segmented in {row.MembraneSegmentationReadPath}"
+            [raw_fn, raw_mem0, raw_nuc0, raw_struct0, mem_seg_whole, 
+                nuc_seg_whole, struct_seg_whole] = self._load_image_and_seg(row)
+        except (AssertionError, Exception) as e:
+            log.info(
+                f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
+            )
+            return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
 
-            # prune the results (remove cells touching image boundary)
-            boundary_mask = np.zeros_like(mem_seg_whole)
-            boundary_mask[:, :3, :] = 1
-            boundary_mask[:, -3:, :] = 1
-            boundary_mask[:, :, :3] = 1
-            boundary_mask[:, :, -3:] = 1
-            bd_idx = list(np.unique(mem_seg_whole[boundary_mask > 0]))
+        log.info(f"Raw image and segmentation load successfully: {row.FOVId}")
 
-            # maintain a valid cell list, initialize with all cells minus
-            # cells touching the image boundary, and minus cells with 
-            # no record in labkey (e.g., manually removed based on user's feedback)
-            all_cell_index_list = list(np.unique(mem_seg_whole[mem_seg_whole > 0]))
-            full_set_with_no_boundary = set(all_cell_index_list) - set(bd_idx)
-            set_not_in_labkey = full_set_with_no_boundary - \
-                set(row.index_to_id_dict[0].keys())
-            valid_cell = list(full_set_with_no_boundary - set_not_in_labkey)
-
-            # single cell QC
-            valid_cell_0 = valid_cell.copy() 
-            for list_idx, this_cell_index in enumerate(valid_cell):
-                single_mem = mem_seg_whole == this_cell_index
-                single_nuc = nuc_seg_whole == this_cell_index
-
-                # remove too small cells from valid cell list
-                if np.count_nonzero(single_mem) < min_mem_size or \
-                   np.count_nonzero(single_nuc) < min_nuc_size:
-                    valid_cell_0.remove(this_cell_index)
-                    full_fov_pass = 0
-
-                    # no need to go to next QC criteria
-                    continue
-
-                # make sure the cell is not leaking to the bottom or top
-                z_range_single = np.where(np.any(single_mem, axis=(1, 2)))
-                single_min_z = z_range_single[0][0]
-                single_max_z = z_range_single[0][-1]
-
-                if single_min_z == 0 or single_max_z >= single_mem.shape[0] - 1:
-                    valid_cell_0.remove(this_cell_index)
-                    full_fov_pass = 0
-
-            # if only one cell left or no cell left, just throw it away
-            # HACK: use 0 during testing, change to 1 in real run
-            assert len(valid_cell_0) > 0, \
-                f"very few cells left after single cell QC in {row.FOVId}"
-
-            # assign the tempory list variable back
-            valid_cell = valid_cell_0
-
+        #########################################
+        # run single cell qc in this fov
+        #########################################
+        try:
+            [full_fov_pass, valid_cell] = self._single_cell_qc_in_one_fov()
         except AssertionError as e:
             log.info(
                 f"Skip single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
+            # this is acceptable failure, set bug_flag=False
             return SingleCellGenOneFOVFailure(row.FOVId, False, str(e))
         except Exception as e:
             log.info(
@@ -222,9 +517,9 @@ class PrepAnalysisSingleCellDs(Step):
         log.info(f"single cell QC done in FOV: {row.FOVId}")
 
         try:
-            ##########################################################################
+            #################################################################
             # resize the image into isotropic dimension
-            ##########################################################################
+            #################################################################
             raw_nuc = resize(raw_nuc0, (row.PixelScaleZ / standard_res_qcb, 
                                         row.PixelScaleY / standard_res_qcb,
                                         row.PixelScaleX / standard_res_qcb),
@@ -235,40 +530,35 @@ class PrepAnalysisSingleCellDs(Step):
                                         row.PixelScaleX / standard_res_qcb),
                              method='bilinear').astype(np.uint16)
 
-            raw_str = resize(raw_str0, (row.PixelScaleZ / standard_res_qcb,
-                                        row.PixelScaleY / standard_res_qcb,
-                                        row.PixelScaleX / standard_res_qcb),
+            raw_str = resize(raw_struct0, (row.PixelScaleZ / standard_res_qcb,
+                                           row.PixelScaleY / standard_res_qcb,
+                                           row.PixelScaleX / standard_res_qcb),
                              method='bilinear').astype(np.uint16)
 
             mem_seg_whole = resize_to(mem_seg_whole, raw_mem.shape, method='nearest')
             nuc_seg_whole = resize_to(nuc_seg_whole, raw_nuc.shape, method='nearest')
-            str_seg = resize_to(str_seg, raw_str.shape, method='nearest')
+            struct_seg_whole = resize_to(struct_seg_whole, raw_str.shape, 
+                                         method='nearest')
 
-            # identify index and CellId 1:1 mapping
-            index_to_cellid_map = dict()
-            cellid_to_index_map = dict()
-            for list_idx, this_cell_index in enumerate(valid_cell):
-                # this is always valid since indices not in index_to_id_dict.keys() 
-                # have been removed
-                index_to_cellid_map[this_cell_index] = \
-                    row.index_to_id_dict[0][this_cell_index]
-            for index_dict, cellid_dict in index_to_cellid_map.items():
-                cellid_to_index_map[cellid_dict] = index_dict 
+            #################################################################
+            # calculate fov related info
+            #################################################################
 
-            # compute center of mass
-            index_to_centroid_map = dict()
-            center_list = center_of_mass(nuc_seg_whole > 0, nuc_seg_whole, valid_cell)
-            for list_idx, this_cell_index in enumerate(valid_cell):
-                index_to_centroid_map[this_cell_index] = center_list[list_idx]
+            [index_to_cellid_map,
+             cellid_to_index_map,
+             index_to_centroid_map,
+             stack_min_z,
+             stack_max_z,
+             true_edge_cells] = self._calculate_fov_info(
+                row,
+                valid_cell, 
+                nuc_seg_whole,
+                mem_seg_whole,
+                raw_fn)
 
-            # compute whole stack min/max z
-            mem_seg_whole_valid = np.zeros_like(mem_seg_whole)
-            for list_idx, this_cell_index in enumerate(valid_cell):
-                mem_seg_whole_valid[mem_seg_whole == this_cell_index] = this_cell_index
-            z_range_whole = np.where(np.any(mem_seg_whole_valid, axis=(1, 2)))
-            stack_min_z = z_range_whole[0][0]
-            stack_max_z = z_range_whole[0][-1]
-
+            #################################################################
+            # calculate a dictionary to store FOV info
+            #################################################################
             df_fov_meta = {
                 'FOVId': row.FOVId,
                 'structure_name': row.Gene,
@@ -291,21 +581,6 @@ class PrepAnalysisSingleCellDs(Step):
                 'image_size': [list(raw_mem.shape)],
                 'fov_seg_pass': full_fov_pass
             }
-
-            # find true edge cells, the cells in the outer layer of a colony
-            true_edge_cells = []
-            edge_fov_flag = False
-            if row.ColonyPosition is None:
-                # parse colony position from file name
-                reg = re.compile('(-|_)((\d)?)(e)((\d)?)(-|_)')
-                if reg.search(os.path.basename(raw_fn)):
-                    edge_fov_flag = True
-            else:
-                if row.ColonyPosition.lower() == 'edge':
-                    edge_fov_flag = True
-
-            if edge_fov_flag:
-                true_edge_cells = find_true_edge_cells(mem_seg_whole_valid)
 
             log.info(f"FOV info is done: {row.FOVId}, ready to loop through cells")
 
@@ -359,64 +634,20 @@ class PrepAnalysisSingleCellDs(Step):
                     rmtree(thiscell_path)
                 os.mkdir(thiscell_path)
 
-                # determine crop roi
-                z_range = np.where(np.any(mem_seg, axis=(1, 2)))
-                y_range = np.where(np.any(mem_seg, axis=(0, 2)))
-                x_range = np.where(np.any(mem_seg, axis=(0, 1)))
-                z_range = z_range[0]
-                y_range = y_range[0]
-                x_range = x_range[0]
+                [roi, nuc_seg, mem_seg, mem_top_mask_dilate, 
+                 str_seg_crop, str_seg_crop_roof] = self._get_roi_and_crop(
+                    mem_seg,
+                    nuc_seg,
+                    struct_seg_whole
+                )
 
-                # define a large ROI based on bounding box
-                roi = [max(z_range[0] - 10, 0), min(z_range[-1] + 12, mem_seg.shape[0]),
-                        max(y_range[0] - 40, 0), min(y_range[-1] + 40, mem_seg.shape[1]),
-                        max(x_range[0] - 40, 0), min(x_range[-1] + 40, mem_seg.shape[2])]
-
-                # roof augmentation
-                mem_nearly_top_z = int(z_range[0] + round(0.75 * (
-                    z_range[-1] - z_range[0] + 1)))
-                mem_top_mask = np.zeros(mem_seg.shape, dtype=np.byte)
-                mem_top_mask[mem_nearly_top_z:, :, :] = \
-                    mem_seg[mem_nearly_top_z:, :, :] > 0                  
-                mem_top_mask_dilate = dilation(mem_top_mask > 0,
-                                                selem=np.ones((21, 1, 1), dtype=np.byte))
-                mem_top_mask_dilate[:mem_nearly_top_z, :, :] = \
-                    mem_seg[: mem_nearly_top_z, :, :] > 0
-
-                # crop mem/nuc seg
-                mem_seg = mem_seg.astype(np.uint8)
-                mem_seg = mem_seg[roi[0]:roi[1], roi[2]:roi[3], roi[4]:roi[5]]
-                mem_seg[mem_seg > 0] = 255
-
-                nuc_seg = nuc_seg.astype(np.uint8)
-                nuc_seg = nuc_seg[roi[0]:roi[1], roi[2]:roi[3], roi[4]:roi[5]]
-                nuc_seg[nuc_seg > 0] = 255
-
-                mem_top_mask_dilate = mem_top_mask_dilate.astype(np.uint8)
-                mem_top_mask_dilate = mem_top_mask_dilate[roi[0]:roi[1], roi[2]:roi[3], 
-                                                            roi[4]:roi[5]]
-                mem_top_mask_dilate[mem_top_mask_dilate > 0] = 255
-
-                # crop str seg (without roof augmentation)
-                str_seg_crop = str_seg[roi[0]:roi[1], roi[2]:roi[3], 
-                                        roi[4]:roi[5]].astype(np.uint8)
-                str_seg_crop[mem_seg < 1] = 0
-                str_seg_crop[str_seg_crop > 0] = 255
-
-                # crop str seg (with roof augmentation)
-                str_seg_crop_roof = str_seg[roi[0]:roi[1], roi[2]:roi[3], 
-                                            roi[4]:roi[5]].astype(np.uint8)
-                str_seg_crop_roof[mem_top_mask_dilate < 1] = 0
-                str_seg_crop_roof[str_seg_crop_roof > 0] = 255
-
-                # save the cropped segmentation
+                # merge and save the cropped segmentation
                 all_seg = np.stack([
                     nuc_seg,
                     mem_seg,
                     mem_top_mask_dilate,
                     str_seg_crop,
                     str_seg_crop_roof], axis=0)
-                print(all_seg.shape)
                 all_seg = np.expand_dims(np.transpose(all_seg, (1, 0, 2, 3)), axis=0)
 
                 crop_seg_path = thiscell_path / 'segmentation.ome.tif'
@@ -437,35 +668,13 @@ class PrepAnalysisSingleCellDs(Step):
                 writer.save(crop_raw_merged)   
 
                 # check for pair
-                dna_label, dna_num = label(nuc_seg > 0, return_num=True)
-
-                if dna_num < 2:
-                    # certainly not pair if there is only one cc 
-                    this_cell_is_pair = 0
-                else:
-                    stats = regionprops(dna_label)
-                    region_size = [stats[i]['area'] for i in range(dna_num)]
-                    large_two = sorted(range(len(region_size)), 
-                                        key=lambda sub: region_size[sub])[-2:]
-                    dis = euc_dist_3d(stats[large_two[0]]['centroid'], 
-                                        stats[large_two[1]]['centroid'])
-                    if dis > dist_cutoff:
-                        sz1 = stats[large_two[0]]['area']
-                        sz2 = stats[large_two[1]]['area']
-                        if sz1 / sz2 > 1.5625 or sz1 / sz2 < 0.64:
-                            # the two parts do not have comparable sizes
-                            this_cell_is_pair = 0
-                        else:
-                            this_cell_is_pair = 1
-                    else:
-                        # not far apart enough
-                        this_cell_is_pair = 0
+                this_cell_is_pair = self._check_if_pair(nuc_seg)
 
                 name_dict = {
                     "crop_raw": ['dna', 'membrane', 'structure'],
                     "crop_seg": ['dna_segmentation', 'membrane_segmentation',
-                                    'membrane_segmentation', 'struct_segmentation',
-                                    'struct_segmentation']
+                                 'membrane_segmentation', 'struct_segmentation',
+                                 'struct_segmentation']
                 }
 
                 # out for mitotic classifier
@@ -515,14 +724,13 @@ class PrepAnalysisSingleCellDs(Step):
                 f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
             return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
-        
 
     @log_run_params
     def run(
         self,
         dataset: Union[str, Path, pd.DataFrame, dd.DataFrame],
-        single_cell_path: Path = "single_cells",
         distributed_executor_address: Optional[str] = None,
+        save_fov_dataset: bool = True,
         debug: bool = False,
         overwrite: bool = False,
         **kwargs
@@ -552,6 +760,9 @@ class PrepAnalysisSingleCellDs(Step):
             "NucleusSegmentationReadPath", "MembraneSegmentationReadPath",
             "ChannelIndexDNA", "ChannelIndexMembrane", "ChannelIndexStructure",
             "ChannelIndexBrightfield"]*
+        save_fov_data: bool
+            A flag for saving fov dataset or not, after preparation
+            Default: True (save fov dataset to csv)
 
         Returns
         -------
@@ -608,7 +819,6 @@ class PrepAnalysisSingleCellDs(Step):
             for cell_row in df_one_fov.itertuples():
                 fov_index_to_id_dict[cell_row.CellIndex] = cell_row.CellId
                 fov_id_to_index_dict[cell_row.CellId] = cell_row.CellIndex
-         
             # add dictioinary back to fov dataframe
             fov_dataset.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
             fov_dataset.at[row.Index, 'id_to_index_dict'] = [fov_id_to_index_dict]
@@ -617,22 +827,22 @@ class PrepAnalysisSingleCellDs(Step):
         log.info(f"Original dataset length: {len(dataset)}")
 
         # Create single cell directory
-        single_cell_dir = self.step_local_staging_dir / single_cell_path
+        single_cell_dir = self.step_local_staging_dir / "single_cells"
         single_cell_dir.mkdir(exist_ok=True)
         log.info(f"single cells will be saved into: {single_cell_dir}")
 
-        for ridx, row in fov_dataset.iterrows():
-            x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
+        # for ridx, row in fov_dataset.iterrows():
+        #     x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
 
-        from concurrent.futures import ProcessPoolExecutor
-        with ProcessPoolExecutor() as exe:
-            results = exe.map(
-                self._single_cell_gen_one_fov,
-                *zip(*list(fov_dataset.iterrows())),
-                [single_cell_dir for i in range(len(dataset))],
-                [overwrite for i in range(len(dataset))]
-            )
-        # list has no .key()
+        # from concurrent.futures import ProcessPoolExecutor
+        # with ProcessPoolExecutor() as exe:
+        #    results = exe.map(
+        #        self._single_cell_gen_one_fov,
+        #        *zip(*list(fov_dataset.iterrows())),
+        #        [single_cell_dir for i in range(len(dataset))],
+        #        [overwrite for i in range(len(dataset))]
+        #    )
+
         # Process each row
         with DistributedHandler(distributed_executor_address) as handler:
             # Start processing
@@ -668,19 +878,15 @@ class PrepAnalysisSingleCellDs(Step):
                         {DatasetFields.FOVId: result.fov_id, "Error": result.error}
                     )
 
-        # build output datasets
+        # save fov datasets
         final_fov_meta = pd.DataFrame(fov_meta_gather)
+        fov_manifest_save_path = self.step_local_staging_dir / "fov_dataset.csv"
+        final_fov_meta.to_csv(fov_manifest_save_path, index=False)
+
+        # build output datasets
         final_cell_meta = pd.DataFrame(list(itertools.chain(*cell_meta_gather)))
-
-        # Join original dataset to the fov paths
-        self.fov_manifest = final_fov_meta
-        self.cell_manifest = final_cell_meta
-
-        # Save manifest to CSV
-        fov_manifest_save_path = self.step_local_staging_dir / "fov_manifest.csv"
-        self.fov_manifest.to_csv(fov_manifest_save_path, index=False)
-
-        cell_manifest_save_path = self.step_local_staging_dir / "cell_manifest.csv"
+        self.manifest = final_cell_meta
+        cell_manifest_save_path = self.step_local_staging_dir / "manifest.csv"
         self.cell_manifest.to_csv(cell_manifest_save_path, index=False)
 
         # Save errored FOVs to JSON
