@@ -60,6 +60,7 @@ requirements = [
     "pandas",
     "Pillow",
     "pyarrow",
+    "scipy",
     "tqdm",
     "scipy",
     "scikit-image",

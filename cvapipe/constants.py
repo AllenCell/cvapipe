@@ -3,6 +3,8 @@
 
 
 class DatasetFields:
+    CellId = "CellId"
+    CellIndex = "CellIndex"
     CellLine = "CellLine"
     CellLineId = "CellLineId"
     CellLineName = "CellLineId/Name"
