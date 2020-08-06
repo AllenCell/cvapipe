@@ -838,8 +838,8 @@ class PrepAnalysisSingleCellDs(Step):
         log.info(f"single cells will be saved into: {single_cell_dir}")
 
         ### for debug ###
-        for ridx, row in fov_dataset.iterrows():
-            x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
+        # for ridx, row in fov_dataset.iterrows():
+        #     x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
 
         # from concurrent.futures import ProcessPoolExecutor
         # with ProcessPoolExecutor() as exe:
@@ -853,7 +853,7 @@ class PrepAnalysisSingleCellDs(Step):
         # Process each row
         with DistributedHandler(distributed_executor_address) as handler:
             # Start processing
-            futures = handler.client.map(
+            results = handler.batched_map(
                 self._single_cell_gen_one_fov,
                 # Convert dataframe iterrows into two lists of items to iterate over
                 # One list will be row index
@@ -862,9 +862,9 @@ class PrepAnalysisSingleCellDs(Step):
                 # Pass the other parameters as list of the same thing for each
                 # mapped function call
                 [single_cell_dir for i in range(len(fov_dataset))],
-                [overwrite for i in range(len(fov_dataset))]
+                [overwrite for i in range(len(fov_dataset))],
+                batch_size=10,
             )
-            results = handler.gather(futures)
 
         # Generate fov paths rows
         fov_meta_gather = []

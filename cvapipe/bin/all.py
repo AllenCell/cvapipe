@@ -32,7 +32,10 @@ class All:
         Set all of your available steps here.
         This is only used for data logging operations, not computation purposes.
         """
-        self.step_list = [steps.ValidateDataset()]
+        self.step_list = [
+            steps.ValidateDataset(),
+            steps.PrepAnalysisSingleCellDs(),
+        ]
 
     def run(
         self,
@@ -89,16 +92,16 @@ class All:
                 # Create cluster
                 log.info("Creating SLURMCluster")
                 cluster = SLURMCluster(
-                    cores=8,
-                    memory="140GB",
-                    queue="aics_cpu_general",
+                    cores=2,
+                    memory="60GB",
+                    queue="aics_gpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
                     log_directory=str(log_dir),
                 )
 
                 # Spawn workers
-                cluster.scale(50)
+                cluster.scale(10)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address
@@ -127,7 +130,9 @@ class All:
 
             single_cell_ds = prep_analysis_sc(
                 dataset=validated_data_path,
-                **kwargs)
+                distributed_executor_address=distributed_executor_address,
+                **kwargs,
+            )
 
         # Run flow and get ending state
         state = flow.run(executor=exe)
