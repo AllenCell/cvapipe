@@ -94,7 +94,7 @@ class All:
                 cluster = SLURMCluster(
                     cores=2,
                     memory="60GB",
-                    queue="aics_gpu_general",
+                    queue="aics_cpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
                     log_directory=str(log_dir),
