@@ -5,7 +5,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Union, NamedTuple, Int
+from typing import Dict, List, Optional, Union, NamedTuple
 
 import dask.dataframe as dd
 import pandas as pd
@@ -66,8 +66,7 @@ class PrepAnalysisSingleCellDs(Step):
     @staticmethod
     def _load_image_and_seg(
         row: pd.Series
-    ) -> List(Path, np.ndarray, np.ndarray, 
-              np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+    ) -> List:
         """
         load images and segmentations
 
@@ -111,13 +110,13 @@ class PrepAnalysisSingleCellDs(Step):
         # get the raw image and split into different channels
         start_time = time.time()
         raw_data = np.squeeze(AICSImage(raw_fn).data)
-        raw_mem0 = raw_data[row.ChannelNumber638, :, :, :]
-        raw_nuc0 = raw_data[row.ChannelNumber405, :, :, :]
+        raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
+        raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
         # find valid structure channel index
         if math.isnan(row.ChannelNumber561):
-            raw_struct0 = raw_data[row.ChannelNumber488, :, :, :]
+            raw_struct0 = raw_data[int(row.ChannelNumber488), :, :, :]
         else:
-            raw_struct0 = raw_data[row.ChannelNumber561, :, :, :]
+            raw_struct0 = raw_data[int(row.ChannelNumber561), :, :, :]
         total_t = time.time() - start_time
         log.info(f"Raw image load in: {total_t} sec")
 
@@ -158,7 +157,7 @@ class PrepAnalysisSingleCellDs(Step):
         mem_seg_whole: np.ndarray,
         nuc_seg_whole: np.ndarray,
         row: pd.Series
-    ) -> List(Int, List):
+    ) -> List:
         """
         make sure the cell/nucleus segmentation not failed terribly
         and remove the bad cells when possible (e.g., very small cells)
@@ -174,7 +173,7 @@ class PrepAnalysisSingleCellDs(Step):
 
         Return:
         -----------------------------
-        full_fov_pass: Int
+        full_fov_pass: int
             flag for whether all cells in this fov can be trusted
         valid_cell: List
             the list of CellIndex after removing bad cells
@@ -273,9 +272,9 @@ class PrepAnalysisSingleCellDs(Step):
             mapping from CellId to CellIndex
         index_to_centroid_map: Dict
             mapping from CellIndex to its centroid position
-        stack_min_z: Int
+        stack_min_z: int
             the minimum z of all cells in this FOV
-        stack_max_z: Int
+        stack_max_z: int
              the maximum z of all cells in this FOV
         true_edge_cells: List
             the list of CellIndex that is truely on edge of the colony
@@ -420,7 +419,7 @@ class PrepAnalysisSingleCellDs(Step):
                 str_seg_crop, str_seg_crop_roof]
 
     @staticmethod
-    def _check_if_pair(nuc_seg: np.ndarray) -> Int:
+    def _check_if_pair(nuc_seg: np.ndarray) -> int:
         """
 
         check if this cell is a pair after division or not,
@@ -433,7 +432,7 @@ class PrepAnalysisSingleCellDs(Step):
 
         Return:
         ------------------------
-        this_cell_is_pair: Int
+        this_cell_is_pair: int
             flag for this cell being a pair or not
         """
         dist_cutoff = 85
@@ -465,15 +464,13 @@ class PrepAnalysisSingleCellDs(Step):
 
     @staticmethod
     def _single_cell_gen_one_fov(
-        self,
         row_index: int,
         row: pd.Series,
         single_cell_dir: Path,
-        overwrite: bool,
+        overwrite: bool = False
     ) -> Union[SingleCellGenOneFOVResult, SingleCellGenOneFOVFailure]:
         # TODO: currently, overwrite flag is not working. 
         # need to think more on how to deal with overwrite
-
         ########################################
         # parameters
         ########################################
@@ -488,11 +485,13 @@ class PrepAnalysisSingleCellDs(Step):
         ########################################
         try:
             [raw_fn, raw_mem0, raw_nuc0, raw_struct0, mem_seg_whole, 
-                nuc_seg_whole, struct_seg_whole] = self._load_image_and_seg(row)
+             nuc_seg_whole, struct_seg_whole] = \
+                PrepAnalysisSingleCellDs._load_image_and_seg(row)
         except (AssertionError, Exception) as e:
             log.info(
                 f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
+            log.error(e, exc_info=True)
             return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
 
         log.info(f"Raw image and segmentation load successfully: {row.FOVId}")
@@ -501,7 +500,11 @@ class PrepAnalysisSingleCellDs(Step):
         # run single cell qc in this fov
         #########################################
         try:
-            [full_fov_pass, valid_cell] = self._single_cell_qc_in_one_fov()
+            [full_fov_pass, valid_cell] = \
+                PrepAnalysisSingleCellDs._single_cell_qc_in_one_fov(
+                    mem_seg_whole,
+                    nuc_seg_whole,
+                    row)
         except AssertionError as e:
             log.info(
                 f"Skip single cell generation for FOVId: {row.FOVId}. Error: {e}"
@@ -512,6 +515,7 @@ class PrepAnalysisSingleCellDs(Step):
             log.info(
                 f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
+            log.error(e, exc_info=True)
             return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
 
         log.info(f"single cell QC done in FOV: {row.FOVId}")
@@ -549,7 +553,7 @@ class PrepAnalysisSingleCellDs(Step):
              index_to_centroid_map,
              stack_min_z,
              stack_max_z,
-             true_edge_cells] = self._calculate_fov_info(
+             true_edge_cells] = PrepAnalysisSingleCellDs._calculate_fov_info(
                 row,
                 valid_cell, 
                 nuc_seg_whole,
@@ -635,7 +639,8 @@ class PrepAnalysisSingleCellDs(Step):
                 os.mkdir(thiscell_path)
 
                 [roi, nuc_seg, mem_seg, mem_top_mask_dilate, 
-                 str_seg_crop, str_seg_crop_roof] = self._get_roi_and_crop(
+                 str_seg_crop, str_seg_crop_roof] = \
+                    PrepAnalysisSingleCellDs._get_roi_and_crop(
                     mem_seg,
                     nuc_seg,
                     struct_seg_whole
@@ -668,7 +673,7 @@ class PrepAnalysisSingleCellDs(Step):
                 writer.save(crop_raw_merged)   
 
                 # check for pair
-                this_cell_is_pair = self._check_if_pair(nuc_seg)
+                this_cell_is_pair = PrepAnalysisSingleCellDs._check_if_pair(nuc_seg)
 
                 name_dict = {
                     "crop_raw": ['dna', 'membrane', 'structure'],
@@ -723,6 +728,7 @@ class PrepAnalysisSingleCellDs(Step):
             log.info(
                 f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
             )
+            log.error(e, exc_info=True)
             return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
 
     @log_run_params
@@ -831,8 +837,9 @@ class PrepAnalysisSingleCellDs(Step):
         single_cell_dir.mkdir(exist_ok=True)
         log.info(f"single cells will be saved into: {single_cell_dir}")
 
-        # for ridx, row in fov_dataset.iterrows():
-        #     x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
+        ### for debug ###
+        for ridx, row in fov_dataset.iterrows():
+            x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
 
         # from concurrent.futures import ProcessPoolExecutor
         # with ProcessPoolExecutor() as exe:
@@ -849,13 +856,13 @@ class PrepAnalysisSingleCellDs(Step):
             futures = handler.client.map(
                 self._single_cell_gen_one_fov,
                 # Convert dataframe iterrows into two lists of items to iterate over
-                # One list will be row 2aindex
+                # One list will be row index
                 # One list will be the pandas series of every row
                 *zip(*list(fov_dataset.iterrows())),
                 # Pass the other parameters as list of the same thing for each
                 # mapped function call
-                [single_cell_dir for i in range(len(dataset))],
-                [overwrite for i in range(len(dataset))]
+                [single_cell_dir for i in range(len(fov_dataset))],
+                [overwrite for i in range(len(fov_dataset))]
             )
             results = handler.gather(futures)
 
@@ -887,7 +894,7 @@ class PrepAnalysisSingleCellDs(Step):
         final_cell_meta = pd.DataFrame(list(itertools.chain(*cell_meta_gather)))
         self.manifest = final_cell_meta
         cell_manifest_save_path = self.step_local_staging_dir / "manifest.csv"
-        self.cell_manifest.to_csv(cell_manifest_save_path, index=False)
+        self.final_cell_meta.to_csv(cell_manifest_save_path, index=False)
 
         # Save errored FOVs to JSON
         with open(self.step_local_staging_dir / "errors.json", "w") as write_out:
