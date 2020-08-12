@@ -92,16 +92,16 @@ class All:
                 # Create cluster
                 log.info("Creating SLURMCluster")
                 cluster = SLURMCluster(
-                    cores=2,
+                    cores=1,
                     memory="60GB",
-                    queue="aics_cpu_general",
+                    queue="aics_gpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
                     log_directory=str(log_dir),
                 )
 
                 # Spawn workers
-                cluster.scale(10)
+                cluster.scale(15)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address
@@ -126,9 +126,10 @@ class All:
 
         # Configure your flow
         with Flow("cvapipe") as flow:
-            validated_data_path = validate_dataset(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
+            # Allows us to pass `--raw_dataset {some path}`
+            validated_data_path = validate_dataset(**kwargs)
 
-            single_cell_ds = prep_analysis_sc(
+            prep_analysis_sc(
                 dataset=validated_data_path,
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
