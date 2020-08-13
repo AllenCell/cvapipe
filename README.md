@@ -18,8 +18,9 @@ In general, all commands for this package will follow the format:
 * `command` is what you want that step to do, such as "run" or "push"
 
 **Available Steps**
-* `validate_dataset`: `cvapipe validate_dataset run --raw_dataset {path_to_dataset}`
+* `validate_dataset`: `cvapipe validatedataset run --raw_dataset {path_to_dataset}`
 will validate that the provided dataset can be processed by the downstream steps.
+* `prep_analysis_single_cell_ds`: `cvapipe prepanalysissinglecellds run --dataset /path/to/cell_table.parquet --single_cell_path /path/to/save/crop/single_cells/` will prepare the data table for analysis and other downstream steps  
 
 ### Whole Pipeline
 To run the entire pipeline from start to finish you can simply run:

@@ -38,6 +38,7 @@ dev_requirements = [
 ]
 
 step_workflow_requirements = [
+    "cloudpickle>=1.5.0",  # needed for distributed
     "bokeh>=2.1.0",
     "dask[bag]>=2.21.0",
     "dask_jobqueue>=0.7.0",
@@ -49,6 +50,7 @@ step_workflow_requirements = [
     "partd>=1.1.0",  # needed for dask[bag]
     "prefect>=0.12.5",
     "python-dateutil<=2.8.0",  # needed for quilt3 (datastep dependency)
+    "aics_dask_utils",  # needed for multiple steps, e.g., DistributedHandler
 ]
 
 requirements = [
@@ -60,6 +62,10 @@ requirements = [
     "pyarrow",
     "scipy",
     "tqdm",
+    "scipy",
+    "scikit-image",
+    "aicsimageio",
+    "aicsimageprocessing",
 ]
 
 
@@ -72,10 +78,7 @@ extra_requirements = {
     "test": test_requirements,
     "dev": dev_requirements,
     "aics": aics_data_requirements,
-    "all": [
-        *requirements,
-        *dev_requirements,
-    ]
+    "all": [*requirements, *dev_requirements,],
 }
 
 setup(
@@ -91,11 +94,7 @@ setup(
         "Programming Language :: Python :: 3.8",
     ],
     description="Workflow to manage processing of FOVs and Cells for the Cell Variance Analysis program.",
-    entry_points={
-        "console_scripts": [
-            "cvapipe=cvapipe.bin.cli:cli"
-        ]
-    },
+    entry_points={"console_scripts": ["cvapipe=cvapipe.bin.cli:cli"]},
     install_requires=requirements,
     license="Allen Institute Software License",
     long_description=readme,

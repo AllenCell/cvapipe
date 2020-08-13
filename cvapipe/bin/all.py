@@ -32,7 +32,10 @@ class All:
         Set all of your available steps here.
         This is only used for data logging operations, not computation purposes.
         """
-        self.step_list = [steps.ValidateDataset()]
+        self.step_list = [
+            steps.ValidateDataset(),
+            steps.PrepAnalysisSingleCellDs(),
+        ]
 
     def run(
         self,
@@ -70,6 +73,7 @@ class All:
         """
         # Initalize steps
         validate_dataset = steps.ValidateDataset()
+        prep_analysis_sc = steps.PrepAnalysisSingleCellDs()
 
         # Choose executor
         if debug:
@@ -88,16 +92,16 @@ class All:
                 # Create cluster
                 log.info("Creating SLURMCluster")
                 cluster = SLURMCluster(
-                    cores=4,
-                    memory="8GB",
-                    queue="aics_cpu_general",
+                    cores=1,
+                    memory="60GB",
+                    queue="aics_gpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
                     log_directory=str(log_dir),
                 )
 
                 # Spawn workers
-                cluster.scale(50)
+                cluster.scale(15)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address
@@ -122,7 +126,14 @@ class All:
 
         # Configure your flow
         with Flow("cvapipe") as flow:
-            validate_dataset(**kwargs)  # Allows us to pass `--raw_dataset {some path}`
+            # Allows us to pass `--raw_dataset {some path}`
+            validated_data_path = validate_dataset(**kwargs)
+
+            prep_analysis_sc(
+                dataset=validated_data_path,
+                distributed_executor_address=distributed_executor_address,
+                **kwargs,
+            )
 
         # Run flow and get ending state
         state = flow.run(executor=exe)
