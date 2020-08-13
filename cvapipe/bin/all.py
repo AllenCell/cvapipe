@@ -35,6 +35,7 @@ class All:
         self.step_list = [
             steps.ValidateDataset(),
             steps.PrepAnalysisSingleCellDs(),
+            steps.MitoClass(),
         ]
 
     def run(
@@ -74,6 +75,7 @@ class All:
         # Initalize steps
         validate_dataset = steps.ValidateDataset()
         prep_analysis_sc = steps.PrepAnalysisSingleCellDs()
+        run_mito_class = steps.MitoClass()
 
         # Choose executor
         if debug:
@@ -129,8 +131,14 @@ class All:
             # Allows us to pass `--raw_dataset {some path}`
             validated_data_path = validate_dataset(**kwargs)
 
-            prep_analysis_sc(
+            singel_cell_data_path = prep_analysis_sc(
                 dataset=validated_data_path,
+                distributed_executor_address=distributed_executor_address,
+                **kwargs,
+            )
+
+            run_mito_class(
+                dataset=singel_cell_data_path,
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
