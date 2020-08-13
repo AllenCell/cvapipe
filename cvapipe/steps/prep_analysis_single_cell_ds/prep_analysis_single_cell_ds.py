@@ -42,7 +42,7 @@ class PrepAnalysisSingleCellDs(Step):
         debug: bool = False,
         overwrite: bool = False,
         **kwargs
-    ) -> List[Path]:
+    ) -> Path:
         """
         Run single cell generation, which will be used for analysis
 
@@ -74,27 +74,9 @@ class PrepAnalysisSingleCellDs(Step):
 
         Returns
         -------
-        manifest_save_path: Path
+        cell_manifest_save_path: Path
             Path to the produced manifest of single cell dataset
         """
-        # Your code here
-        #
-        # The `self.step_local_staging_dir` is exposed to save files in
-        #
-        # The user should set `self.manifest` to a dataframe of absolute paths that
-        # point to the created files and each files metadata
-        #
-        # By default, `self.filepath_columns` is ["filepath"], but should be edited
-        # if there are more than a single column of filepaths
-        #
-        # By default, `self.metadata_columns` is [], but should be edited to include
-        # any columns that should be parsed for metadata and attached to objects
-        #
-        # The user should not rely on object state to retrieve results from prior steps.
-        # I.E. do not call use the attribute self.upstream_tasks to retrieve data.
-        # Pass the required path to a directory of files, the path to a prior manifest,
-        # or in general, the exact parameters required for this function to run.
-
         # Handle dataset provided as string or path
         if isinstance(dataset, (str, Path)):
             dataset = pq.read_table(Path(dataset).expanduser().resolve(strict=True))
@@ -139,19 +121,6 @@ class PrepAnalysisSingleCellDs(Step):
         single_cell_dir.mkdir(exist_ok=True)
         log.info(f"single cells will be saved into: {single_cell_dir}")
 
-        # ## for debug ###
-        # for ridx, row in fov_dataset.iterrows():
-        #     x = self._single_cell_gen_one_fov(ridx, row, single_cell_dir, overwrite)
-
-        # from concurrent.futures import ProcessPoolExecutor
-        # with ProcessPoolExecutor() as exe:
-        #    results = exe.map(
-        #        self._single_cell_gen_one_fov,
-        #        *zip(*list(fov_dataset.iterrows())),
-        #        [single_cell_dir for i in range(len(dataset))],
-        #        [overwrite for i in range(len(dataset))]
-        #    )
-
         # Process each row
         with DistributedHandler(distributed_executor_address) as handler:
             # Start processing
@@ -167,8 +136,6 @@ class PrepAnalysisSingleCellDs(Step):
                 [overwrite for i in range(len(fov_dataset))],
                 batch_size=10,
             )
-
-        print('HEREEEEE')
 
         # Generate fov paths rows
         fov_meta_gather = []
@@ -207,4 +174,4 @@ class PrepAnalysisSingleCellDs(Step):
         with open(self.step_local_staging_dir / "bad_data.json", "w") as write_out:
             json.dump(bad_data, write_out)
 
-        return [fov_manifest_save_path, cell_manifest_save_path]
+        return cell_manifest_save_path
