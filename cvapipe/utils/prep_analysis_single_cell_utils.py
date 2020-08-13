@@ -219,7 +219,7 @@ def single_cell_gen_one_fov(
         and os.path.exists(row.StructureSegmentationReadPath)
     ):
         # fail
-        return [row.FOVId, True, f"missing segmentation or raw files"]
+        return [row.FOVId, True, "missing segmentation or raw files"]
 
     # get the raw image and split into different channels
     start_time = time.time()
@@ -280,7 +280,7 @@ def single_cell_gen_one_fov(
     # double check big failure, quick reject
     if mem_seg_whole.max() <= 3 or nuc_seg_whole.max() <= 3:
         # bad images, but not bug, use "False"
-        return [row.FOVId, False, f"very few cells segmented"]
+        return [row.FOVId, False, "very few cells segmented"]
 
     # prune the results (remove cells touching image boundary)
     boundary_mask = np.zeros_like(mem_seg_whole)
@@ -328,7 +328,7 @@ def single_cell_gen_one_fov(
     # if only one cell left or no cell left, just throw it away
     # HACK: use 0 during testing, change to 1 in real run
     if len(valid_cell_0) < 1:
-        return [row.FOVId, False, f"very few cells left after single cell QC"]
+        return [row.FOVId, False, "very few cells left after single cell QC"]
 
     print(f"single cell QC done in FOV: {row.FOVId}")
 
