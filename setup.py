@@ -78,10 +78,7 @@ extra_requirements = {
     "test": test_requirements,
     "dev": dev_requirements,
     "aics": aics_data_requirements,
-    "all": [
-        *requirements,
-        *dev_requirements,
-    ]
+    "all": [*requirements, *dev_requirements,],
 }
 
 setup(
@@ -97,11 +94,7 @@ setup(
         "Programming Language :: Python :: 3.8",
     ],
     description="Workflow to manage processing of FOVs and Cells for the Cell Variance Analysis program.",
-    entry_points={
-        "console_scripts": [
-            "cvapipe=cvapipe.bin.cli:cli"
-        ]
-    },
+    entry_points={"console_scripts": ["cvapipe=cvapipe.bin.cli:cli"]},
     install_requires=requirements,
     license="Allen Institute Software License",
     long_description=readme,
