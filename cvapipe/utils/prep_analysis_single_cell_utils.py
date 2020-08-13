@@ -376,7 +376,7 @@ def single_cell_gen_one_fov(
     edge_fov_flag = False
     if row.ColonyPosition is None:
         # parse colony position from file name
-        reg = re.compile('(-|_)((\d)?)(e)((\d)?)(-|_)')
+        reg = re.compile('(-|_)((\d)?)(e)((\d)?)(-|_)')  # noqa: W605
         if reg.search(os.path.basename(raw_fn)):
             edge_fov_flag = True
     else:
