@@ -189,7 +189,10 @@ class MultiResStructCompare(Step):
             pairwise_dir / "multires_pairwise_similarity.csv", index=False
         )
         self.manifest = self.manifest.append(
-            {"Description": "raw similarity scores", "path": "foo/bar"},
+            {
+                "Description": "raw similarity scores",
+                "path": pairwise_dir / "multires_pairwise_similarity.csv",
+            },
             ignore_index=True,
         )
 
@@ -217,6 +220,13 @@ class MultiResStructCompare(Step):
             format="png",
             dpi=300,
             transparent=True,
+        )
+        self.manifest = self.manifest.append(
+            {
+                "Description": "plot of similarity vs resolution",
+                "path": plots_dir / "multi_resolution_image_correlation.png",
+            },
+            ignore_index=True,
         )
 
         # save out manifest
