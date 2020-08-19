@@ -15,8 +15,7 @@ from aics_dask_utils import DistributedHandler
 from datastep import Step, log_run_params
 
 from ...constants import DatasetFields
-from cvapipe.utils.prep_analysis_single_cell_utils import \
-    single_cell_gen_one_fov
+from cvapipe.utils.prep_analysis_single_cell_utils import single_cell_gen_one_fov
 
 ###############################################################################
 
@@ -84,11 +83,12 @@ class PrepAnalysisSingleCellDs(Step):
 
         # HACK: for some reason the structure segmentation read path is empty
         # HACK: temporary solution, use membrane seg as fake structure seg
-        dataset['StructureSegmentationReadPath'] = \
-            dataset['MembraneSegmentationReadPath']
+        dataset["StructureSegmentationReadPath"] = dataset[
+            "MembraneSegmentationReadPath"
+        ]
 
         # HACK: AlignmentReadPath should exist in final query
-        if 'AlignedImageReadPath' not in dataset.columns:
+        if "AlignedImageReadPath" not in dataset.columns:
             dataset = dataset.assign(AlignedImageReadPath=None)
 
         # create a fov data frame
@@ -97,8 +97,8 @@ class PrepAnalysisSingleCellDs(Step):
         fov_dataset.drop(["CellId", "CellIndex"], axis=1, inplace=True)
 
         # add two new colums
-        fov_dataset['index_to_id_dict'] = np.empty((len(fov_dataset), 0)).tolist()
-        fov_dataset['id_to_index_dict'] = np.empty((len(fov_dataset), 0)).tolist()
+        fov_dataset["index_to_id_dict"] = np.empty((len(fov_dataset), 0)).tolist()
+        fov_dataset["id_to_index_dict"] = np.empty((len(fov_dataset), 0)).tolist()
 
         for row in fov_dataset.itertuples():
             df_one_fov = dataset.query("FOVId==@row.FOVId")
@@ -110,8 +110,8 @@ class PrepAnalysisSingleCellDs(Step):
                 fov_index_to_id_dict[cell_row.CellIndex] = cell_row.CellId
                 fov_id_to_index_dict[cell_row.CellId] = cell_row.CellIndex
             # add dictioinary back to fov dataframe
-            fov_dataset.at[row.Index, 'index_to_id_dict'] = [fov_index_to_id_dict]
-            fov_dataset.at[row.Index, 'id_to_index_dict'] = [fov_id_to_index_dict]
+            fov_dataset.at[row.Index, "index_to_id_dict"] = [fov_index_to_id_dict]
+            fov_dataset.at[row.Index, "id_to_index_dict"] = [fov_id_to_index_dict]
 
         # Log original length of cell dataset
         log.info(f"Original dataset length: {len(dataset)}")
@@ -148,9 +148,7 @@ class PrepAnalysisSingleCellDs(Step):
                 cell_meta_gather.append(result[1])
             elif len(result) == 3:
                 if result[1]:
-                    errors.append(
-                        {DatasetFields.FOVId: result[0], "Error": result[2]}
-                    )
+                    errors.append({DatasetFields.FOVId: result[0], "Error": result[2]})
                 else:
                     bad_data.append(
                         {DatasetFields.FOVId: result[0], "Error": result[2]}
