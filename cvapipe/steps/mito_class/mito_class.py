@@ -59,6 +59,7 @@ class MitoClass(Step):
         """
         # path to save intermediate prediction results
         pred_path = self.step_local_staging_dir / "predictions"
+        pred_path.mkdir(exist_ok=True)
         my_classifier = ProjectTester(save_model_output=False)
         df_pred = my_classifier.run_tester_csv(dataset, pred_path, return_df=True)
 

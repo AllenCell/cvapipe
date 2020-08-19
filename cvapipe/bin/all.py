@@ -131,14 +131,14 @@ class All:
             # Allows us to pass `--raw_dataset {some path}`
             validated_data_path = validate_dataset(**kwargs)
 
-            singel_cell_data_path = prep_analysis_sc(
+            single_cell_data_path = prep_analysis_sc(
                 dataset=validated_data_path,
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
 
             run_mito_class(
-                dataset=singel_cell_data_path,
+                dataset=single_cell_data_path,
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
