@@ -21,7 +21,7 @@ def test_run_2_structures(data_dir):
     multiresstructcompare = MultiResStructCompare()
 
     output = multiresstructcompare.run(
-        structs=["Endoplasmic reticulum", "Desmosomes"],
+        structs=["Actin filaments", "Mitochondria"],
         N_cells_per_struct=2,
         mdata_cols=[
             "StructureShortName",
@@ -32,8 +32,8 @@ def test_run_2_structures(data_dir):
             "CellImage3DPath",
         ],
         px_size=0.29,
-        par_dir=Path("/allen/aics/modeling/jacksonb/projects/actk/"),
-        input_csv_loc=Path("local_staging/singlecellimages/manifest.csv"),
+        par_dir=Path("/allen/aics/modeling/ritvik/projects/actk/"),
+        input_csv_loc=Path("local_staging_2/singlecellimages/manifest.csv"),
     )
 
     fig_plus_data_manifest = pd.read_csv(output)
@@ -49,12 +49,3 @@ def test_run_2_structures(data_dir):
         expected_col in similarity_score_manifest.columns
         for expected_col in EXPECTED_COLUMNS
     )
-    # assert len(out_manifest) == len(pcs)
-
-    # for i, row in out_manifest.iterrows():
-    #     df_pc = pd.read_csv(row.dataframe_path)
-    #     assert len(df_pc) == len(path) * N_cells
-    #     assert (
-    #         list(df_pc.columns)
-    #         == [id_col, "loc", f"{metric} distance to loc"] + dist_cols
-    #     )

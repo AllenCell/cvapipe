@@ -5,12 +5,11 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+from aics_dask_utils import DistributedHandler
 
 from aicsimageio import AICSImage
 
@@ -32,6 +31,71 @@ class MultiResStructCompare(Step):
         config: Optional[Union[str, Path, Dict[str, str]]] = None,
     ):
         super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
+
+    def compute_distance_metric(
+        self,
+        row_index_i: int,
+        row_i: pd.Series,
+        row_index_j: int,
+        row_j: pd.Series,
+        mdata_cols: List,
+    ) -> Union[pd.DataFrame, None]:
+
+        if row_i["StructureShortName"] == row_j["StructureShortName"]:
+            if row_index_j > row_index_i:
+
+                assert row_i["CellId"] != row_j["CellId"]
+
+                log.info(
+                    "Beginning pairwise metric computation"
+                    f" between cells {row_i.CellId}"
+                    f" and {row_j.CellId}"
+                )
+
+                row = (
+                    row_i[mdata_cols]
+                    .add_suffix("_i")
+                    .append(row_j[mdata_cols].add_suffix("_j"))
+                )
+
+                # load first cell and check
+                image_i = AICSImage(self._par_dir / row.CellImage3DPath_i)
+                assert image_i.get_channel_names()[4] == "structure"
+                image_i_gfp_3d = image_i.get_image_data("ZYX", S=0, T=0, C=4)
+                image_i_gfp_3d_bool = image_i_gfp_3d > 0
+
+                # load second cell and check
+                image_j = AICSImage(self._par_dir / row.CellImage3DPath_j)
+                assert image_j.get_channel_names()[4] == "structure"
+                image_j_gfp_3d = image_j.get_image_data("ZYX", S=0, T=0, C=4)
+                image_j_gfp_3d_bool = image_j_gfp_3d > 0
+
+                # correlations at each resolution of image pyramid
+                pyr_corrs = pyramid_correlation(
+                    image_i_gfp_3d_bool, image_j_gfp_3d_bool
+                )
+
+                # tmp df to save stats for each resolution of these cells
+                df_tmp_corrs = pd.DataFrame()
+                for k, v in sorted(pyr_corrs.items()):
+                    tmp_stat_dict = {
+                        "Resolution (micrometers)": self._px_size * k,
+                        "Pearson Correlation": v,
+                    }
+                    df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
+                df_tmp_corrs["CellId_i"] = row.CellId_i
+                df_tmp_corrs["CellId_j"] = row.CellId_j
+
+                # merge stats df to row
+                df_row_tmp = row.to_frame().T
+                df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
+
+                log.info(
+                    f"Completed pairwise metric between cells {row_i.CellId}"
+                    f" and {row_j.CellId}"
+                )
+
+                return df_row_tmp
 
     @log_run_params
     def run(
@@ -56,8 +120,10 @@ class MultiResStructCompare(Step):
             "CellImage3DPath",
         ],
         px_size=0.29,
-        par_dir=Path("/allen/aics/modeling/jacksonb/projects/actk/"),
-        input_csv_loc=Path("local_staging/singlecellimages/manifest.csv"),
+        par_dir=Path("/allen/aics/modeling/ritvik/projects/actk/"),
+        input_csv_loc=Path("local_staging_2/singlecellimages/manifest.csv"),
+        distributed_executor_address: Optional[str] = None,
+        batch_size: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -104,74 +170,77 @@ class MultiResStructCompare(Step):
             Path to manifest
         """
 
-        # grab the inputs since they're not in a step yet
-        new_df_path = par_dir / input_csv_loc
-        df = pd.read_csv(new_df_path)
+        # Adding hidden attributes to use in compute distance metric function
+        self._par_dir = par_dir
+        self._input_csv_loc = input_csv_loc
+        self._px_size = px_size
+
+        # Handle dataset provided as string or path
+        if isinstance(par_dir / input_csv_loc, (str, Path)):
+            df = Path(par_dir / input_csv_loc).expanduser().resolve(strict=True)
+
+            # Read dataset
+            df = pd.read_csv(par_dir / input_csv_loc)
 
         # subset down to only N_cells_per_struct per structure
-        df_short_sample = pd.DataFrame()
+        dataset = pd.DataFrame()
+
         for struct in structs:
-            df_short_sample = df_short_sample.append(
-                df[df.StructureShortName == struct].sample(N_cells_per_struct)
-            )
-        df_short_sample = df_short_sample.reset_index(drop=True)
+            try:
+                dataset = dataset.append(
+                    df[df.StructureShortName == struct].sample(N_cells_per_struct)
+                )
+            except Exception as e:
+                log.info(
+                    f"Not enough {struct} rows to get {N_cells_per_struct} samples"
+                    f" Error {e}."
+                )
+                break
 
-        # make df of cell pairs + metadata
-        df_pairwise = pd.DataFrame()
-        for struct in structs:
-            df_struct = df_short_sample[df_short_sample.StructureShortName == struct]
-            for i, row_i in df_struct.iterrows():
-                for j, row_j in df_struct.iterrows():
-                    if j > i:
-                        row = (
-                            row_i[mdata_cols]
-                            .add_suffix("_i")
-                            .append(row_j[mdata_cols].add_suffix("_j"))
-                        )
-                        df_pairwise = df_pairwise.append(row, ignore_index=True)
-        assert np.all(df_pairwise["CellId_i"] != df_pairwise["CellId_j"])
+        dataset = dataset.reset_index(drop=True)
 
-        # go through each pair and measure similarity at each resolution
-        df_pairwise_corrs = pd.DataFrame()
-        for k, row in tqdm(df_pairwise.iterrows(), total=len(df_pairwise)):
+        # Empty futures list
+        distance_metric_futures = []
 
-            # load first cell and check
-            image_i = AICSImage(par_dir / row.CellImage3DPath_i)
-            assert image_i.get_channel_names()[4] == "structure"
-            image_i_gfp_3d = image_i.get_image_data("ZYX", S=0, T=0, C=4)
-            image_i_gfp_3d_bool = image_i_gfp_3d > 0
+        # Process each row
+        with DistributedHandler(distributed_executor_address) as handler:
+            for this_row_index, this_row in dataset.iterrows():
+                # Start processing
+                distance_metric_future = handler.client.map(
+                    self.compute_distance_metric,
+                    # Convert dataframe iterrows into two lists of items to iterate over
+                    # One list will be row index
+                    # One list will be the pandas series of every row
+                    *zip(*list(dataset.iterrows())),
+                    # Keep the other row (row j) constant as we
+                    # loop through the dataset (row i)
+                    [this_row_index for i in range(len(dataset))],
+                    [this_row for i in range(len(dataset))],
+                    [mdata_cols for i in range(len(dataset))],
+                )
 
-            # load second cell and check
-            image_j = AICSImage(par_dir / row.CellImage3DPath_j)
-            assert image_j.get_channel_names()[4] == "structure"
-            image_j_gfp_3d = image_j.get_image_data("ZYX", S=0, T=0, C=4)
-            image_j_gfp_3d_bool = image_j_gfp_3d > 0
+                distance_metric_futures.append(distance_metric_future)
 
-            # correlations at each resolution of image pyramid
-            pyr_corrs = pyramid_correlation(image_i_gfp_3d_bool, image_j_gfp_3d_bool)
+            # Collect futures
+            distance_metric_results = [
+                handler.gather(f) for f in distance_metric_futures
+            ]
 
-            # tmp df to save stats for each resolution of these cells
-            df_tmp_corrs = pd.DataFrame()
-            for k, v in sorted(pyr_corrs.items()):
-                tmp_stat_dict = {
-                    "Resolution (micrometers)": px_size * k,
-                    "Pearson Correlation": v,
-                }
-                df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
-            df_tmp_corrs["CellId_i"] = row.CellId_i
-            df_tmp_corrs["CellId_j"] = row.CellId_j
+        # Assemble final dataframe
+        df_final = pd.DataFrame()
+        for dataframes in distance_metric_results:
+            for corr_dataframe in dataframes:
+                # corr_dataframe is None if
+                # row_i["StructureShortName"] != row_j["StructureShortName"]
+                # or row_index_j > row_index_i
+                if corr_dataframe is not None:
+                    df_final = df_final.append(corr_dataframe)
 
-            # merge stats df to row
-            df_row_tmp = row.to_frame().T
-            df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
+        log.info(f"Assembled Parwise metrics dataframe with shape {df_final.shape}")
 
-            # append stats for these two cells to main output
-            df_pairwise_corrs = df_pairwise_corrs.append(df_row_tmp)
-
-        # fix up output df
-        df_pairwise_corrs = df_pairwise_corrs.reset_index(drop=True)
-        df_pairwise_corrs.shape
-        df_pairwise_corrs = df_pairwise_corrs.rename(
+        # fix up final pairwise dataframe
+        df_final = df_final.reset_index(drop=True)
+        df_final = df_final.rename(
             columns={"StructureShortName_i": "StructureShortName"}
         ).drop(columns="StructureShortName_j")
 
@@ -181,13 +250,11 @@ class MultiResStructCompare(Step):
         # where to save outputs
         pairwise_dir = self.step_local_staging_dir / "pairwise_metrics"
         pairwise_dir.mkdir(parents=True, exist_ok=True)
-        plots_dir = self.step_local_staging_dir / "pairwise_metrics"
+        plots_dir = self.step_local_staging_dir / "pairwise_plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
-        # save df
-        df_pairwise_corrs.to_csv(
-            pairwise_dir / "multires_pairwise_similarity.csv", index=False
-        )
+        # save pairwise dataframe to csv
+        df_final.to_csv(pairwise_dir / "multires_pairwise_similarity.csv", index=False)
         self.manifest = self.manifest.append(
             {
                 "Description": "raw similarity scores",
@@ -202,7 +269,7 @@ class MultiResStructCompare(Step):
             x="Resolution (micrometers)",
             y="Pearson Correlation",
             hue="StructureShortName",
-            data=df_pairwise_corrs,
+            data=df_final,
             ci=95,
             capsize=0.2,
             palette="Set2",
@@ -216,7 +283,7 @@ class MultiResStructCompare(Step):
 
         # save the plot
         fig.savefig(
-            "multi_resolution_image_correlation.png",
+            plots_dir / "multi_resolution_image_correlation.png",
             format="png",
             dpi=300,
             transparent=True,
@@ -232,4 +299,5 @@ class MultiResStructCompare(Step):
         # save out manifest
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"
         self.manifest.to_csv(manifest_save_path)
+
         return manifest_save_path
