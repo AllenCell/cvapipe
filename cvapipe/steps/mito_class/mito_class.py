@@ -10,7 +10,7 @@ import numpy as np
 from aics_dask_utils import DistributedHandler
 
 from datastep import Step, log_run_params
-from image_classifier_3d.proj_tester import ProjectTester  # noqa F401
+from image_classifier_3d.proj_tester import ProjectTester
 
 ###############################################################################
 
@@ -63,11 +63,11 @@ class MitoClass(Step):
 
         # uncertain cells will be labeled as an outlier
         if np.max(row.pred) < uncertain_cutoff:
-            return [row.CellId, -1, True, True]
+            return [row.CellId, -1, True, "Outlier", True]
 
         # check if it is a bad cell (dead, or blob, or wrong seg)
         if row.pred_label > 5:  # 6 or 7 or 8
-            return [row.CellId, -1, True, True]
+            return [row.CellId, -1, True, "Outlier", True]
 
         # return the label
         if row.pair > 0:  # M7 pair
