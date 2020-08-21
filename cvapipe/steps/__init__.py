@@ -4,5 +4,7 @@ from .validate_dataset import ValidateDataset
 from .prep_analysis_single_cell_ds import PrepAnalysisSingleCellDs
 from .pca_path_cells import PcaPathCells
 from .mito_class import MitoClass
+from .merge_dataset import MergeDataset
 
-__all__ = ["ValidateDataset", "PrepAnalysisSingleCellDs", "PcaPathCells", "MitoClass"]
+__all__ = ["ValidateDataset", "PrepAnalysisSingleCellDs", "PcaPathCells",
+           "MitoClass", "MergeDataset"]

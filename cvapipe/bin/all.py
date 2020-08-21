@@ -36,6 +36,7 @@ class All:
             steps.ValidateDataset(),
             steps.PrepAnalysisSingleCellDs(),
             steps.MitoClass(),
+            steps.MergeDataset(),
         ]
 
     def run(
@@ -76,6 +77,7 @@ class All:
         validate_dataset = steps.ValidateDataset()
         prep_analysis_sc = steps.PrepAnalysisSingleCellDs()
         run_mito_class = steps.MitoClass()
+        merge_data_for_cfe = steps.MergeDataset()
 
         # Choose executor
         if debug:
@@ -137,11 +139,27 @@ class All:
                 **kwargs,
             )
 
-            run_mito_class(
+            cell_data_with_annotation = run_mito_class(
                 dataset=single_cell_data_path,
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
+
+            cell_data_cfe = merge_data_for_cfe(
+                dataset_with_annotation=cell_data_with_annotation,
+                dataset_from_labkey=validated_data_path,
+                distributed_executor_address=distributed_executor_address,
+                **kwargs,
+            )
+
+            #####################################################
+            # remove this when new steps are added
+            # "cell_data_with_annotation" is the file path to the dataset for analysis
+            # "cell_data_cfe" is the file path to the dataset for CFE
+            #####################################################
+            print(f"data for CFE saved at {cell_data_cfe}")
+            print(f"data for analysis saved at {cell_data_with_annotation}")
+            #####################################################
 
         # Run flow and get ending state
         state = flow.run(executor=exe)
