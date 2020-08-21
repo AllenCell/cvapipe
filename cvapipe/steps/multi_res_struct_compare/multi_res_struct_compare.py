@@ -101,16 +101,16 @@ class MultiResStructCompare(Step):
     def run(
         self,
         structs=[
-            "Endoplasmic reticulum",
-            "Desmosomes",
+            "Actin filaments",
             "Mitochondria",
-            "Golgi",
             "Microtubules",
             "Nuclear envelope",
-            "Nucleolus (Dense Fibrillar Component)",
+            "Desmosomes",
+            "Plasma membrane",
             "Nucleolus (Granular Component)",
+            "Nuclear pores",
         ],
-        N_cells_per_struct=100,
+        N_cells_per_struct=70,
         mdata_cols=[
             "StructureShortName",
             "FOVId",
@@ -121,7 +121,7 @@ class MultiResStructCompare(Step):
         ],
         px_size=0.29,
         par_dir=Path("/allen/aics/modeling/ritvik/projects/actk/"),
-        input_csv_loc=Path("local_staging_2/singlecellimages/manifest.csv"),
+        input_csv_loc=Path("local_staging/singlecellimages/manifest.csv"),
         distributed_executor_address: Optional[str] = None,
         batch_size: Optional[int] = None,
         **kwargs,
@@ -201,6 +201,7 @@ class MultiResStructCompare(Step):
 
         # Empty futures list
         distance_metric_futures = []
+        distance_metric_results = []
 
         # Process each row
         with DistributedHandler(distributed_executor_address) as handler:
@@ -221,10 +222,14 @@ class MultiResStructCompare(Step):
 
                 distance_metric_futures.append(distance_metric_future)
 
-            # Collect futures
-            distance_metric_results = [
-                handler.gather(f) for f in distance_metric_futures
-            ]
+                result = handler.gather(distance_metric_future)
+                distance_metric_results.append(result)
+
+            # This seems to be a lot slower and clogs a single core
+            #  Collect futures
+            # distance_metric_results = [
+            #     handler.gather(f) for f in distance_metric_futures
+            # ]
 
         # Assemble final dataframe
         df_final = pd.DataFrame()
