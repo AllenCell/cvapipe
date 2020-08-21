@@ -10,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from aics_dask_utils import DistributedHandler
+from dask.distributed import performance_report
 
 from aicsimageio import AICSImage
 
@@ -41,59 +42,83 @@ class MultiResStructCompare(Step):
         mdata_cols: List,
     ) -> Union[pd.DataFrame, None]:
 
+        log.info(
+            "Beginning pairwise metric computation"
+            f" between cells {row_i.CellId}"
+            f" and {row_j.CellId}"
+        )
+
+        row = (
+            row_i[mdata_cols]
+            .add_suffix("_i")
+            .append(row_j[mdata_cols].add_suffix("_j"))
+        )
+
+        # load first cell and check
+        image_i = AICSImage(self._par_dir / row.CellImage3DPath_i)
+        # Call .data to prime the cache
+        image_i.data
+        assert image_i.get_channel_names()[4] == "structure"
+        image_i_gfp_3d = image_i.get_image_data("ZYX", S=0, T=0, C=4)
+        image_i_gfp_3d_bool = image_i_gfp_3d > 0
+
+        # load second cell and check
+        image_j = AICSImage(self._par_dir / row.CellImage3DPath_j)
+        # Call .data to prime the cache
+        image_j.data
+        assert image_j.get_channel_names()[4] == "structure"
+        image_j_gfp_3d = image_j.get_image_data("ZYX", S=0, T=0, C=4)
+        image_j_gfp_3d_bool = image_j_gfp_3d > 0
+
+        # correlations at each resolution of image pyramid
+        pyr_corrs = pyramid_correlation(image_i_gfp_3d_bool, image_j_gfp_3d_bool)
+
+        # tmp df to save stats for each resolution of these cells
+        df_tmp_corrs = pd.DataFrame()
+        for k, v in sorted(pyr_corrs.items()):
+            tmp_stat_dict = {
+                "Resolution (micrometers)": self._px_size * k,
+                "Pearson Correlation": v,
+            }
+            df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
+        df_tmp_corrs["CellId_i"] = row.CellId_i
+        df_tmp_corrs["CellId_j"] = row.CellId_j
+
+        # merge stats df to row
+        df_row_tmp = row.to_frame().T
+        df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
+
+        log.info(
+            f"Completed pairwise metric between cells {row_i.CellId}"
+            f" and {row_j.CellId}"
+        )
+
+        return df_row_tmp
+
+    def loop_distance_metric(
+        self,
+        row_index_i: int,
+        row_i: pd.Series,
+        row_index_j: int,
+        row_j: pd.Series,
+        mdata_cols: List,
+    ) -> Union[pd.DataFrame, None]:
+
         if row_i["StructureShortName"] == row_j["StructureShortName"]:
             if row_index_j > row_index_i:
-
                 assert row_i["CellId"] != row_j["CellId"]
-
-                log.info(
-                    "Beginning pairwise metric computation"
-                    f" between cells {row_i.CellId}"
-                    f" and {row_j.CellId}"
-                )
-
-                row = (
-                    row_i[mdata_cols]
-                    .add_suffix("_i")
-                    .append(row_j[mdata_cols].add_suffix("_j"))
-                )
-
-                # load first cell and check
-                image_i = AICSImage(self._par_dir / row.CellImage3DPath_i)
-                assert image_i.get_channel_names()[4] == "structure"
-                image_i_gfp_3d = image_i.get_image_data("ZYX", S=0, T=0, C=4)
-                image_i_gfp_3d_bool = image_i_gfp_3d > 0
-
-                # load second cell and check
-                image_j = AICSImage(self._par_dir / row.CellImage3DPath_j)
-                assert image_j.get_channel_names()[4] == "structure"
-                image_j_gfp_3d = image_j.get_image_data("ZYX", S=0, T=0, C=4)
-                image_j_gfp_3d_bool = image_j_gfp_3d > 0
-
-                # correlations at each resolution of image pyramid
-                pyr_corrs = pyramid_correlation(
-                    image_i_gfp_3d_bool, image_j_gfp_3d_bool
-                )
-
-                # tmp df to save stats for each resolution of these cells
-                df_tmp_corrs = pd.DataFrame()
-                for k, v in sorted(pyr_corrs.items()):
-                    tmp_stat_dict = {
-                        "Resolution (micrometers)": self._px_size * k,
-                        "Pearson Correlation": v,
-                    }
-                    df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
-                df_tmp_corrs["CellId_i"] = row.CellId_i
-                df_tmp_corrs["CellId_j"] = row.CellId_j
-
-                # merge stats df to row
-                df_row_tmp = row.to_frame().T
-                df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
-
-                log.info(
-                    f"Completed pairwise metric between cells {row_i.CellId}"
-                    f" and {row_j.CellId}"
-                )
+                # Save Dask report every time row index i is 1
+                # This is arbitrary, just want to see the performance
+                # once per loop
+                if row_index_i == 1:
+                    with performance_report(filename="dask-report.html"):
+                        df_row_tmp = self.compute_distance_metric(
+                            row_index_i, row_i, row_index_j, row_j, mdata_cols,
+                        )
+                else:
+                    df_row_tmp = self.compute_distance_metric(
+                        row_index_i, row_i, row_index_j, row_j, mdata_cols,
+                    )
 
                 return df_row_tmp
 
@@ -208,7 +233,7 @@ class MultiResStructCompare(Step):
             for this_row_index, this_row in dataset.iterrows():
                 # Start processing
                 distance_metric_future = handler.client.map(
-                    self.compute_distance_metric,
+                    self.loop_distance_metric,
                     # Convert dataframe iterrows into two lists of items to iterate over
                     # One list will be row index
                     # One list will be the pandas series of every row
