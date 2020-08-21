@@ -27,7 +27,7 @@ class MergeDataset(Step):
     def run(
         self,
         dataset_with_annotation: Union[str, Path],
-        dataset_from_labkey: Union[str, Path], 
+        dataset_from_labkey: Union[str, Path],
         debug: bool = False,
         **kwargs
     ) -> List[Path]:
@@ -62,12 +62,13 @@ class MergeDataset(Step):
             Path(dataset_from_labkey).expanduser().resolve(strict=True)
         )
 
-        df_anno = pd.read_csv(dataset_with_annotation,
-                              usecols=['CellId', 'MitoticStateId', 'Complete'])
+        df_anno = pd.read_csv(
+            dataset_with_annotation, usecols=["CellId", "MitoticStateId", "Complete"]
+        )
 
         # merge the two tables, annotation table may be smaller, because
         # outliers have been removed, cells with failed QC have been excluded.
-        df_merge = pd.merge(df_labkey, df_anno, on='Cellid', how='right')
+        df_merge = pd.merge(df_labkey, df_anno, on="Cellid", how="right")
 
         self.manifest = df_merge
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"
