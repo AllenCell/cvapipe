@@ -40,7 +40,7 @@ class PrepAnalysisSingleCellDs(Step):
         save_fov_dataset: bool = True,
         debug: bool = False,
         overwrite: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Path:
         """
         Run single cell generation, which will be used for analysis

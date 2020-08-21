@@ -6,5 +6,10 @@ from .pca_path_cells import PcaPathCells
 from .mito_class import MitoClass
 from .merge_dataset import MergeDataset
 
-__all__ = ["ValidateDataset", "PrepAnalysisSingleCellDs", "PcaPathCells",
-           "MitoClass", "MergeDataset"]
+__all__ = [
+    "ValidateDataset",
+    "PrepAnalysisSingleCellDs",
+    "PcaPathCells",
+    "MitoClass",
+    "MergeDataset",
+]

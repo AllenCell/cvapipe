@@ -10,7 +10,7 @@ import numpy as np
 from aics_dask_utils import DistributedHandler
 
 from datastep import Step, log_run_params
-from image_classifier_3d.proj_tester import ProjectTester
+from image_classifier_3d.proj_tester import ProjectTester #noqa F401
 
 ###############################################################################
 
@@ -28,10 +28,7 @@ class MitoClass(Step):
         super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
 
     @staticmethod
-    def _finalize_cell_annotation(
-        row_index: int,
-        row: pd.Series
-    ) -> List:
+    def _finalize_cell_annotation(row_index: int, row: pd.Series) -> List:
         """
         Run a pure function.
 
@@ -73,22 +70,22 @@ class MitoClass(Step):
             return [row.CellId, -1, True, True]
 
         # return the label
-        if row.pair > 0:   # M7 pair
-            return [row.CellId, 1, True, 'M6M7_complete', False]
+        if row.pair > 0:  # M7 pair
+            return [row.CellId, 1, True, "M6M7_complete", False]
         elif row.pred_label == 0:
-            return [row.CellId, 2, True, 'M0', False]  # M0
+            return [row.CellId, 2, True, "M0", False]  # M0
         elif row.pred_label == 1:
-            return [row.CellId, 3, True, 'M1M2', False]  # M1/M2
+            return [row.CellId, 3, True, "M1M2", False]  # M1/M2
         elif row.pred_label == 2:
-            return [row.CellId, 4, True, 'M3', False]  # M3
+            return [row.CellId, 4, True, "M3", False]  # M3
         elif row.pred_label == 3:
-            return [row.CellId, 5, True, 'M4M5', False]  # M4/M5
+            return [row.CellId, 5, True, "M4M5", False]  # M4/M5
         elif row.pred_label == 4:
-            return [row.CellId, 1, True, 'M6M7_complete', False]  # M6 early
+            return [row.CellId, 1, True, "M6M7_complete", False]  # M6 early
         elif row.pred_label == 5:
-            return [row.CellId, 1, False, 'M6M7_single', False]  # M7 single
+            return [row.CellId, 1, False, "M6M7_single", False]  # M7 single
         else:
-            raise ValueError('invalide value')
+            raise ValueError("invalide value")
 
     @log_run_params
     def run(
@@ -154,7 +151,7 @@ class MitoClass(Step):
                         "CellId": result[0],
                         "MitoticStateId": result[1],
                         "Complete": result[2],
-                        "CellStage": result[3]
+                        "CellStage": result[3],
                     }
                 )
         final_annotation = pd.DataFrame(final_annotation)
