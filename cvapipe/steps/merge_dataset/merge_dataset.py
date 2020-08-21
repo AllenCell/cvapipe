@@ -68,7 +68,7 @@ class MergeDataset(Step):
 
         # merge the two tables, annotation table may be smaller, because
         # outliers have been removed, cells with failed QC have been excluded.
-        df_merge = pd.merge(df_labkey, df_anno, on="Cellid", how="right")
+        df_merge = pd.merge(df_labkey, df_anno, on="CellId", how="right")
 
         self.manifest = df_merge
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"

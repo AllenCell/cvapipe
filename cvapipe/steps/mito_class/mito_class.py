@@ -5,11 +5,11 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from aics_dask_utils import DistributedHandler
-
 from datastep import Step, log_run_params
+
 from image_classifier_3d.proj_tester import ProjectTester
 
 ###############################################################################
@@ -47,7 +47,7 @@ class MitoClass(Step):
             one of the following options,
             -1 - N/A
             1 - interphase
-            2- 
+            2-
         complete_flag: bool
             if the cell is complete (only valid for M6M7 cells)
         outlier_flag: bool
@@ -63,11 +63,11 @@ class MitoClass(Step):
 
         # uncertain cells will be labeled as an outlier
         if np.max(row.pred) < uncertain_cutoff:
-            return [row.CellId, -1, True, True]
+            return [row.CellId, -1, True, "Outlier", True]
 
         # check if it is a bad cell (dead, or blob, or wrong seg)
         if row.pred_label > 5:  # 6 or 7 or 8
-            return [row.CellId, -1, True, True]
+            return [row.CellId, -1, True, "Outlier", True]
 
         # return the label
         if row.pair > 0:  # M7 pair
