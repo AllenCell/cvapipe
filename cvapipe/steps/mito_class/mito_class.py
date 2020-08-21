@@ -10,7 +10,7 @@ import numpy as np
 from aics_dask_utils import DistributedHandler
 
 from datastep import Step, log_run_params
-from image_classifier_3d.proj_tester import ProjectTester #noqa F401
+from image_classifier_3d.proj_tester import ProjectTester  # noqa F401
 
 ###############################################################################
 
