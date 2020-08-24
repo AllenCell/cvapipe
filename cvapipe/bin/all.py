@@ -35,8 +35,8 @@ class All:
         self.step_list = [
             steps.ValidateDataset(),
             steps.PrepAnalysisSingleCellDs(),
-            steps.MitoClass(),
-            steps.MergeDataset(),
+            # steps.MitoClass(),
+            # steps.MergeDataset(),
         ]
 
     def run(
@@ -76,8 +76,8 @@ class All:
         # Initalize steps
         validate_dataset = steps.ValidateDataset()
         prep_analysis_sc = steps.PrepAnalysisSingleCellDs()
-        run_mito_class = steps.MitoClass()
-        merge_data_for_cfe = steps.MergeDataset()
+        # run_mito_class = steps.MitoClass()
+        # merge_data_for_cfe = steps.MergeDataset()
 
         # Choose executor
         if debug:
@@ -97,7 +97,7 @@ class All:
                 log.info("Creating SLURMCluster")
                 cluster = SLURMCluster(
                     cores=1,
-                    memory="60GB",
+                    memory="16GB",
                     queue="aics_gpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
@@ -105,7 +105,7 @@ class All:
                 )
 
                 # Spawn workers
-                cluster.scale(15)
+                cluster.scale(100)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address
@@ -133,33 +133,27 @@ class All:
             # Allows us to pass `--raw_dataset {some path}`
             validated_data_path = validate_dataset(**kwargs)
 
-            single_cell_data_path = prep_analysis_sc(
+            prep_analysis_sc(
                 dataset=validated_data_path,
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
 
+            # mitotic classifier was implemented with plt.
+            # PLT has its own distributed handler, which is not quite 
+            # compatible with prefect + dask 
+            '''
             cell_data_with_annotation = run_mito_class(
                 dataset=single_cell_data_path,
-                distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
 
             cell_data_cfe = merge_data_for_cfe(
                 dataset_with_annotation=cell_data_with_annotation,
                 dataset_from_labkey=validated_data_path,
-                distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
-
-            #####################################################
-            # remove this when new steps are added
-            # "cell_data_with_annotation" is the file path to the dataset for analysis
-            # "cell_data_cfe" is the file path to the dataset for CFE
-            #####################################################
-            print(f"data for CFE saved at {cell_data_cfe}")
-            print(f"data for analysis saved at {cell_data_with_annotation}")
-            #####################################################
+            '''
 
         # Run flow and get ending state
         state = flow.run(executor=exe)

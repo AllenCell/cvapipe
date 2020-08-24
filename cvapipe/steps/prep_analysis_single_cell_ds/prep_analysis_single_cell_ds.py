@@ -134,7 +134,7 @@ class PrepAnalysisSingleCellDs(Step):
                 # mapped function call
                 [single_cell_dir for i in range(len(fov_dataset))],
                 [overwrite for i in range(len(fov_dataset))],
-                batch_size=10,
+                batch_size=95,
             )
 
         # Generate fov paths rows
