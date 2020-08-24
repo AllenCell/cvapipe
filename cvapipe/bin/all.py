@@ -140,9 +140,9 @@ class All:
             )
 
             # mitotic classifier was implemented with plt.
-            # PLT has its own distributed handler, which is not quite 
-            # compatible with prefect + dask 
-            '''
+            # PLT has its own distributed handler, which is not quite
+            # compatible with prefect + dask
+            """
             cell_data_with_annotation = run_mito_class(
                 dataset=single_cell_data_path,
                 **kwargs,
@@ -153,7 +153,7 @@ class All:
                 dataset_from_labkey=validated_data_path,
                 **kwargs,
             )
-            '''
+            """
 
         # Run flow and get ending state
         state = flow.run(executor=exe)

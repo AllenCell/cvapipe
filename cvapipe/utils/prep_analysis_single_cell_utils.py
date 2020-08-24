@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List
 import numpy as np
 import pandas as pd
+
 # import math
 import time
 
@@ -232,8 +233,8 @@ def single_cell_gen_one_fov(
     print(f"Raw image load in: {total_t} sec")
 
     seg_reader = AICSImage(row.MembraneSegmentationReadPath)
-    nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0) 
-    mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1) 
+    nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
+    mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
 
     # get structure segmentation
     # HACK: structure seg is not available in current query yet.
