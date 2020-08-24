@@ -16,7 +16,7 @@ from aicsimageio import AICSImage
 
 from datastep import Step, log_run_params
 
-from .utils import pyramid_correlation
+from .utils import pyramid_correlation, draw_pairs
 
 ###############################################################################
 
@@ -35,56 +35,50 @@ class MultiResStructCompare(Step):
 
     def compute_distance_metric(
         self,
-        row_index_i: int,
-        row_i: pd.Series,
-        row_index_j: int,
-        row_j: pd.Series,
-        mdata_cols: List,
+        row: pd.Series,
+        mdata_cols: List[str],
     ) -> Union[pd.DataFrame, None]:
 
         log.info(
             "Beginning pairwise metric computation"
-            f" between cells {row_i.CellId}"
-            f" and {row_j.CellId}"
+            f" between cells {row.CellId_i}"
+            f" and {row.CellId_j}"
         )
 
-        row = (
-            row_i[mdata_cols]
-            .add_suffix("_i")
-            .append(row_j[mdata_cols].add_suffix("_j"))
-        )
+        # i and j are abused as variables and str names
+        inds = {
+            "i": int(row.CellId_i),
+            "j": int(row.CellId_j)
+        }
 
-        # load first cell and check
-        image_i = AICSImage(self._par_dir / row.CellImage3DPath_i)
-        # Call .data to prime the cache
-        image_i.data
-        assert image_i.get_channel_names()[4] == "structure"
-        image_i_gfp_3d = image_i.get_image_data("ZYX", S=0, T=0, C=4)
-        image_i_gfp_3d_bool = image_i_gfp_3d > 0
-
-        # load second cell and check
-        image_j = AICSImage(self._par_dir / row.CellImage3DPath_j)
-        # Call .data to prime the cache
-        image_j.data
-        assert image_j.get_channel_names()[4] == "structure"
-        image_j_gfp_3d = image_j.get_image_data("ZYX", S=0, T=0, C=4)
-        image_j_gfp_3d_bool = image_j_gfp_3d > 0
-
-        # correlations at each resolution of image pyramid
-        pyr_corrs = pyramid_correlation(image_i_gfp_3d_bool, image_j_gfp_3d_bool)
-
-        # tmp df to save stats for each resolution of these cells
+        # get data for cells i and j
+        gfp_i = masked_gfp_store[row.CellId_i]
+        gfp_j = masked_gfp_store[row.CellId_j]
+        
+        # multi-res comparison
+        pyr_corrs = pyramid_correlation(gfp_i, gfp_j, func=np.mean)
+    
+        # comparison when one input is permuted (as baseline correlation)
+        gfp_i_shuf = gfp_i.copy().flatten()
+        np.random.shuffle(gfp_i_shuf)
+        gfp_i_shuf = gfp_i_shuf.reshape(gfp_i.shape)
+        pyr_corrs_permuted = pyramid_correlation(gfp_i_shuf, gfp_j, func=np.mean)
+    
+        # grab correlations at each res in a df
         df_tmp_corrs = pd.DataFrame()
-        for k, v in sorted(pyr_corrs.items()):
+        for k,v in sorted(pyr_corrs.items()):
             tmp_stat_dict = {
-                "Resolution (micrometers)": self._px_size * k,
-                "Pearson Correlation": v,
+                "Resolution (micrometers)":px_size*k,
+                "Pearson Correlation":v,
+                "Pearson Correlation permuted":pyr_corrs_permuted[k]
             }
             df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
+        
+        # label stats with cell ids
         df_tmp_corrs["CellId_i"] = row.CellId_i
         df_tmp_corrs["CellId_j"] = row.CellId_j
 
-        # merge stats df to row
+        # and append row metadata
         df_row_tmp = row.to_frame().T
         df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
 
@@ -135,7 +129,7 @@ class MultiResStructCompare(Step):
             "Nucleolus (Granular Component)",
             "Nuclear pores",
         ],
-        N_cells_per_struct=70,
+        N_pairs_per_struct=100,
         mdata_cols=[
             "StructureShortName",
             "FOVId",
@@ -145,6 +139,7 @@ class MultiResStructCompare(Step):
             "CellImage3DPath",
         ],
         px_size=0.29,
+        image_dims_crop_size = (64, 160, 96),
         par_dir=Path("/allen/aics/modeling/ritvik/projects/actk/"),
         input_csv_loc=Path("local_staging/singlecellimages/manifest.csv"),
         distributed_executor_address: Optional[str] = None,
@@ -166,8 +161,8 @@ class MultiResStructCompare(Step):
                 "Nucleolus (Dense Fibrillar Component)",
                 "Nucleolus (Granular Component)",
             ]
-        N_cells_per_struct: int
-            How many cells per tagged structure to sample from the bigger input dataset.
+        N_pairs_per_struct: int
+            How many pairs of GFP instances per tagged structure to sample from the bigger input dataset.
             Default: 100
         mdata_cols: List[str]
             Which columns from the input dataset to include n the output as metadata
@@ -182,6 +177,8 @@ class MultiResStructCompare(Step):
         px_size: float
             How big are the (cubic) input pixels in micrometers
             Default: 0.29
+        image_dims_crop_size: Tuple[int]
+            How to crop the input images before the resizing pyamid begins
         par_dir: pathlib.Path
             Parent directory of the input csv, since it's not yet a step.
             Default: Path("/allen/aics/modeling/jacksonb/projects/actk/")
@@ -207,21 +204,30 @@ class MultiResStructCompare(Step):
             # Read dataset
             df = pd.read_csv(par_dir / input_csv_loc)
 
-        # subset down to only N_cells_per_struct per structure
+            
+        # subset down to only N_pairs_per_struct
         dataset = pd.DataFrame()
 
         for struct in structs:
             try:
-                dataset = dataset.append(
-                    df[df.StructureShortName == struct].sample(N_cells_per_struct)
-                )
+                df_struct = df[df.StructureShortName == struct]
+                pair_inds = draw_pairs(df_struct.index, n_pairs=N_pairs_per_struct)
+                inds_i = np.array(list(pair_inds))[:,0]
+                inds_j = np.array(list(pair_inds))[:,1]
+                df_struct_i = df_struct.loc[inds_i]
+                df_struct_j = df_struct.loc[inds_j]
+                for (i,j) in pair_inds:
+                    row_i = df_struct.loc[i]
+                    row_j = df_struct.loc[j]
+                    row = row_i[mdata_cols].add_suffix("_i").append(row_j[mdata_cols].add_suffix("_j"))
+                    dataset = dataset.append(row, ignore_index=True)
             except Exception as e:
                 log.info(
-                    f"Not enough {struct} rows to get {N_cells_per_struct} samples"
+                    f"Not enough {struct} rows to get {N_pairs_per_struct} samples"
                     f" Error {e}."
                 )
                 break
-
+        assert np.all(dataset["CellId_i"] != dataset["CellId_j"])
         dataset = dataset.reset_index(drop=True)
 
         # Empty futures list
@@ -267,12 +273,13 @@ class MultiResStructCompare(Step):
                     df_final = df_final.append(corr_dataframe)
 
         log.info(f"Assembled Parwise metrics dataframe with shape {df_final.shape}")
-
+        
         # fix up final pairwise dataframe
         df_final = df_final.reset_index(drop=True)
         df_final = df_final.rename(
             columns={"StructureShortName_i": "StructureShortName"}
         ).drop(columns="StructureShortName_j")
+        df_final["Pearson Correlation gain over random"] = df_final["Pearson Correlation"] - df_final["Pearson Correlation permuted"]
 
         # make a manifest
         self.manifest = pd.DataFrame(columns=["Description", "path"])
@@ -294,22 +301,28 @@ class MultiResStructCompare(Step):
         )
 
         # make a plot
-        fig = plt.figure(figsize=(10, 7))
+        sns.set(style="ticks", rc={"lines.linewidth": 1.0})
+        fig = plt.figure(figsize=(10,7))
+
         ax = sns.pointplot(
             x="Resolution (micrometers)",
-            y="Pearson Correlation",
+            y="Pearson Correlation gain over random",
             hue="StructureShortName",
-            data=df_final,
+            data=df_pairwise_corrs,
             ci=95,
-            capsize=0.2,
+            capsize=.2,
             palette="Set2",
         )
         ax.legend(
-            loc="upper left", bbox_to_anchor=(0.05, 0.95), ncol=1, frameon=False,
+            loc='upper left',
+            bbox_to_anchor=(0.05, 0.95),
+            ncol=1,
+            frameon=False,
         )
         sns.despine(
-            offset=0, trim=True,
-        )
+            offset=0,
+            trim=True,
+        );
 
         # save the plot
         fig.savefig(
@@ -318,6 +331,7 @@ class MultiResStructCompare(Step):
             dpi=300,
             transparent=True,
         )
+        
         self.manifest = self.manifest.append(
             {
                 "Description": "plot of similarity vs resolution",

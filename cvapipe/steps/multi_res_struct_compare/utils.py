@@ -67,3 +67,30 @@ def pyramid_correlation(img1, img2, **pyramid_kwargs):
             corrs[k], _ = pearsonr(pyramid_1[k].flatten(), pyramid_2[k].flatten())
 
     return corrs
+
+
+def draw_pairs(input_list, n_pairs=1):
+    """
+    Draw unique (ordered) pairs of examples from input_list at random.
+    Input list is not a list of pairs, just a list of single exemplars.
+    
+    Example:
+        >>> draw_pairs([0,1,2,3], n_pairs=3)
+        >>> {(1,2), (2,3), (0,3)}
+        
+    Note:
+        A pair is only unique up to order, e.g. (1,2) == (2,1).  this function
+        only returns and compared sorted tuple to handle this 
+    """
+    
+    # make sure requested number of uniquepairs in possible
+    L = len(input_list)
+    assert n_pairs <= L*(L-1)/2
+    
+    # draw n_pairs of size 2 sets from input_list    
+    pairs = set()
+    while len(pairs) < n_pairs:
+        pairs |= {frozenset(sorted(np.random.choice(input_list, 2 ,replace=False)))}
+    
+    # return a set of ordered tuples to not weird people out
+    return {tuple(sorted(p)) for p in pairs}
