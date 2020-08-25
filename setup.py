@@ -66,6 +66,7 @@ requirements = [
     "scikit-image",
     "aicsimageio",
     "aicsimageprocessing",
+    "image-classifier-3d",
 ]
 
 

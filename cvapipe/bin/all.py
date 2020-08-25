@@ -35,6 +35,8 @@ class All:
         self.step_list = [
             steps.ValidateDataset(),
             steps.PrepAnalysisSingleCellDs(),
+            steps.MitoClass(),
+            steps.MergeDataset(),
         ]
 
     def run(
@@ -74,6 +76,8 @@ class All:
         # Initalize steps
         validate_dataset = steps.ValidateDataset()
         prep_analysis_sc = steps.PrepAnalysisSingleCellDs()
+        # run_mito_class = steps.MitoClass()
+        # merge_data_for_cfe = steps.MergeDataset()
 
         # Choose executor
         if debug:
@@ -93,7 +97,7 @@ class All:
                 log.info("Creating SLURMCluster")
                 cluster = SLURMCluster(
                     cores=1,
-                    memory="60GB",
+                    memory="15GB",
                     queue="aics_gpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
@@ -101,7 +105,7 @@ class All:
                 )
 
                 # Spawn workers
-                cluster.scale(15)
+                cluster.scale(180)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address
@@ -134,6 +138,22 @@ class All:
                 distributed_executor_address=distributed_executor_address,
                 **kwargs,
             )
+
+            # mitotic classifier was implemented with plt.
+            # PLT has its own distributed handler, which is not quite
+            # compatible with prefect + dask
+            """
+            cell_data_with_annotation = run_mito_class(
+                dataset=single_cell_data_path,
+                **kwargs,
+            )
+
+            cell_data_cfe = merge_data_for_cfe(
+                dataset_with_annotation=cell_data_with_annotation,
+                dataset_from_labkey=validated_data_path,
+                **kwargs,
+            )
+            """
 
         # Run flow and get ending state
         state = flow.run(executor=exe)

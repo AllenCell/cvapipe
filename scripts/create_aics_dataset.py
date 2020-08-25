@@ -112,10 +112,16 @@ def create_aics_dataset(args: Args):
 
         # Sample the data
         if args.sample != 1.0:
-            log.info(f"Sampling dataset with frac={args.sample}...")
-            data = data.groupby("CellLineId", group_keys=False)
-            data = data.apply(pd.DataFrame.sample, frac=args.sample)
-            data = data.reset_index(drop=True)
+            if args.sample < 1:
+                log.info(f"Sampling dataset with frac={args.sample}...")
+                data = data.groupby("CellLineId", group_keys=False)
+                data = data.apply(pd.DataFrame.sample, frac=args.sample)
+                data = data.reset_index(drop=True)
+            else:
+                log.info(f"Sampling dataset with {args.sample} cells from each line.")
+                data = data.groupby("CellLineId", group_keys=False)
+                data = data.apply(pd.DataFrame.head, n=args.sample)
+                data = data.reset_index(drop=True)
 
         # Save to Parquet
         data.to_parquet(args.save_path)

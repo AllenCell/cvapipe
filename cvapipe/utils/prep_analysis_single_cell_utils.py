@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import List
 import numpy as np
 import pandas as pd
-import math
+
+# import math
 import time
 
 from shutil import rmtree
@@ -16,7 +17,7 @@ from scipy.ndimage.measurements import center_of_mass
 from skimage.morphology import dilation, ball
 from skimage.measure import regionprops, label
 import aicsimageio
-from aicsimageio import AICSImage, imread
+from aicsimageio import AICSImage
 from aicsimageio.writers import ome_tiff_writer as save_tif
 from aicsimageprocessing import resize, resize_to
 
@@ -227,41 +228,18 @@ def single_cell_gen_one_fov(
     raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
     raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
     # find valid structure channel index
-    if math.isnan(row.ChannelNumber561):
-        raw_struct0 = raw_data[int(row.ChannelNumber488), :, :, :]
-    else:
-        raw_struct0 = raw_data[int(row.ChannelNumber561), :, :, :]
+    raw_struct0 = raw_data[int(row.ChannelNumberStruct), :, :, :]
     total_t = time.time() - start_time
     print(f"Raw image load in: {total_t} sec")
 
-    """
-    # because the seg results are save in one file, MembraneSegmentationFilename
-    # and NucleusSegmentationFilename should be the same
-
-    # temporily comment out during test with old data.
-    # new data will need this assertion
-    try:
-        assert row.MembraneSegmentationFilename == row.NucleusSegmentationFilename,\
-            f"MembraneSegmentationFilename: {row.MembraneSegmentationFilename} and \
-            NucleusSegmentationFilename: {row.NucleusSegmentationFilename} mismatch"
-    except AssertionError as e:
-        log.info(
-            f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
-        )
-        return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
-
-    # this will be used for new data
     seg_reader = AICSImage(row.MembraneSegmentationReadPath)
-    nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0) 
-    mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1) 
-    """
-
-    # HACK: temporary solution when testing with old data ###
-    nuc_seg_whole = np.squeeze(imread(row.NucleusSegmentationReadPath))
-    mem_seg_whole = np.squeeze(imread(row.MembraneSegmentationReadPath))
+    nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
+    mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
 
     # get structure segmentation
-    struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
+    # HACK: structure seg is not available in current query yet.
+    struct_seg_whole = np.ones_like(nuc_seg_whole)
+    # struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
 
     print(f"Segmentation load successfully: {row.FOVId}")
 
@@ -645,6 +623,8 @@ def single_cell_gen_one_fov(
                 "edge_flag": this_is_edge_cell,
                 "fov_id": row.FOVId,
                 "fov_path": raw_fn,
+                "fov_seg_path": row.MembraneSegmentationReadPath,
+                "struct_seg_path": row.StructureSegmentationReadPath,
                 "stack_min_z": stack_min_z,
                 "stack_max_z": stack_max_z,
                 "image_size": [list(raw_mem.shape)],

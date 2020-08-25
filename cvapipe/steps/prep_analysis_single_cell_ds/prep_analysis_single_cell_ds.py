@@ -15,6 +15,7 @@ from aics_dask_utils import DistributedHandler
 from datastep import Step, log_run_params
 
 from ...constants import DatasetFields
+from ..validate_dataset import ValidateDataset
 from cvapipe.utils.prep_analysis_single_cell_utils import single_cell_gen_one_fov
 
 ###############################################################################
@@ -27,7 +28,7 @@ log = logging.getLogger(__name__)
 class PrepAnalysisSingleCellDs(Step):
     def __init__(
         self,
-        direct_upstream_tasks: List["Step"] = [],
+        direct_upstream_tasks: List["Step"] = [ValidateDataset],
         config: Optional[Union[str, Path, Dict[str, str]]] = None,
     ):
         super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
@@ -134,7 +135,7 @@ class PrepAnalysisSingleCellDs(Step):
                 # mapped function call
                 [single_cell_dir for i in range(len(fov_dataset))],
                 [overwrite for i in range(len(fov_dataset))],
-                batch_size=10,
+                batch_size=90,
             )
 
         # Generate fov paths rows
