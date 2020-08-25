@@ -105,7 +105,7 @@ class All:
                 )
 
                 # Spawn workers
-                cluster.scale(160)
+                cluster.scale(180)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address
