@@ -28,7 +28,7 @@ class MitoClass(Step):
     ):
         super().__init__(
             direct_upstream_tasks=direct_upstream_tasks,
-            filepath_columns=["crop_raw", "crop_seg",],
+            filepath_columns=["crop_raw", "crop_seg"],
             config=config,
         )
 
