@@ -196,10 +196,8 @@ def single_cell_gen_one_fov(
     row: pd.Series,
     single_cell_dir: Path,
     per_fov_dir: Path,
-    overwrite: bool = False
+    overwrite: bool = False,
 ) -> List:
-    # TODO: currently, overwrite flag is not working.
-    # need to think more on how to deal with overwrite
     ########################################
     # parameters
     ########################################
