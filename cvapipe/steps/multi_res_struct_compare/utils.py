@@ -54,28 +54,28 @@ def blockreduce_pyramid(input_arr, block_size=(2, 2, 2), func=np.max, max_iters=
 
 
 def pyramid_correlation(img1, img2, **pyramid_kwargs):
-
+    
     pyramid_1 = blockreduce_pyramid(img1, **pyramid_kwargs)
     pyramid_2 = blockreduce_pyramid(img2, **pyramid_kwargs)
-
+    
     assert pyramid_1.keys() == pyramid_2.keys()
-
+    
     corrs = {}
     for k in sorted(set({**pyramid_1, **pyramid_2}.keys())):
         assert pyramid_1[k].shape == pyramid_2[k].shape
-
+        
         imgs_size_1 = (pyramid_1[k].size == 1) & (pyramid_2[k].size == 1)
         imgs_same = np.all(pyramid_1[k] == pyramid_2[k])
-        stdv_1_zero = np.all(pyramid_1[k]) | np.all(~pyramid_1[k])
-        stdv_2_zero = np.all(pyramid_2[k]) | np.all(~pyramid_2[k])
-
+        stdv_1_zero = len(np.unique(pyramid_1[k])) == 1
+        stdv_2_zero = len(np.unique(pyramid_2[k])) == 1
+        
         if imgs_size_1 | imgs_same:
             corrs[k] = 1.0
         elif stdv_1_zero | stdv_2_zero:
             corrs[k] = 0.0
         else:
             corrs[k], _ = pearsonr(pyramid_1[k].flatten(), pyramid_2[k].flatten())
-
+        
     return corrs
 
 

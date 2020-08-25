@@ -46,7 +46,7 @@ class MultiResStructCompare(Step):
             "Nucleolus (Granular Component)",
             "Nuclear pores",
         ],
-        N_pairs_per_struct=100,
+        N_pairs_per_struct=10,
         mdata_cols=[
             "StructureShortName",
             "FOVId",
@@ -153,19 +153,13 @@ class MultiResStructCompare(Step):
         self.manifest = pd.DataFrame(columns=["Description", "path"])
 
         # where to save outputs
-        pairwise_loc = (
-            self.step_local_staging_dir
-            / "pairwise_metrics"
-            / "multires_pairwise_similarity.csv"
-        )
-        pairwise_loc.mkdir(parents=True, exist_ok=True)
-        plot_loc = (
-            self.step_local_staging_dir
-            / "pairwise_plots"
-            / "multi_resolution_image_correlation.png"
-        )
-        plot_loc.mkdir(parents=True, exist_ok=True)
-
+        pairwise_dir = (self.step_local_staging_dir / "pairwise_metrics")
+        pairwise_dir.mkdir(parents=True, exist_ok=True)
+        pairwise_loc = pairwise_dir / "multires_pairwise_similarity.csv"
+        plot_dir = (self.step_local_staging_dir / "pairwise_plots")
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        plot_loc = plot_dir / "multi_resolution_image_correlation.png"
+        
         # save pairwise dataframe to csv
         df_final.to_csv(pairwise_loc, index=False)
         self.manifest = self.manifest.append(
