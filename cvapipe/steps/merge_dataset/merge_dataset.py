@@ -7,6 +7,9 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from datastep import Step, log_run_params
+from ...constants import DatasetFields
+from ..mito_class import MitoClass
+from ..validate_dataset import ValidateDataset
 
 ###############################################################################
 
@@ -18,10 +21,23 @@ log = logging.getLogger(__name__)
 class MergeDataset(Step):
     def __init__(
         self,
-        direct_upstream_tasks: List["Step"] = [],
+        direct_upstream_tasks: List["Step"] = [ValidateDataset, MitoClass],
         config: Optional[Union[str, Path, Dict[str, str]]] = None,
     ):
-        super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
+        super().__init__(
+            direct_upstream_tasks=direct_upstream_tasks,
+            filepath_columns=[
+                DatasetFields.AlignedImageReadPath,
+                DatasetFields.NucleusContourReadPath,
+                DatasetFields.MembraneContourReadPath,
+                DatasetFields.NucleusSegmentationReadPath,
+                DatasetFields.MembraneSegmentationReadPath,
+                DatasetFields.StructureContourReadPath,
+                DatasetFields.StructureSegmentationReadPath,
+                DatasetFields.SourceReadPath,
+            ],
+            config=config,
+        )
 
     @log_run_params
     def run(
@@ -34,13 +50,6 @@ class MergeDataset(Step):
         """
         Merge the mitotic label with original labkey query.
 
-        Protected Parameters
-        --------------------
-        debug: bool
-            A debug flag for the developer to use to manipulate how much data runs,
-            how it is processed, etc.
-            Default: False (Do not debug)
-
         Parameters
         ----------
         dataset_with_annotation: Union[str, Path]
@@ -51,6 +60,11 @@ class MergeDataset(Step):
 
         dataset_from_labkey: Union[str, Path]
             The dataset originally from labkey query
+
+        debug: bool
+            A debug flag for the developer to use to manipulate how much data runs,
+            how it is processed, etc.
+            Default: False (Do not debug)
 
         Returns
         -------

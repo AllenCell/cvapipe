@@ -35,8 +35,8 @@ class All:
         self.step_list = [
             steps.ValidateDataset(),
             steps.PrepAnalysisSingleCellDs(),
-            # steps.MitoClass(),
-            # steps.MergeDataset(),
+            steps.MitoClass(),
+            steps.MergeDataset(),
         ]
 
     def run(
@@ -97,7 +97,7 @@ class All:
                 log.info("Creating SLURMCluster")
                 cluster = SLURMCluster(
                     cores=1,
-                    memory="16GB",
+                    memory="15GB",
                     queue="aics_gpu_general",
                     walltime="10:00:00",
                     local_directory=str(log_dir),
@@ -105,7 +105,7 @@ class All:
                 )
 
                 # Spawn workers
-                cluster.scale(100)
+                cluster.scale(180)
                 log.info("Created SLURMCluster")
 
                 # Use the port from the created connector to set executor address

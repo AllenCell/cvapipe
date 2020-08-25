@@ -30,7 +30,7 @@ To run the entire pipeline from start to finish you can simply run:
 
 `cvapipe all run --raw_dataset {path to dataset}`
 
-*Note: The mitotic classifier step was implemented with pytorch-lightning, which has its own distributed handler and is not quite compatible with prefect + Dask SlurmCluster. So, the whole pipeline will only run through first 2 steps. The last 2 steps need to run as single steps*
+*Note: The mitotic classifier step was implemented with pytorch-lightning (PLT). PLT support running on slurm in two ways: by submitting a slurm job or with a customized [SlurmCluster API](https://williamfalcon.github.io/test-tube/hpc/SlurmCluster/#slurmcluster-class-api), which is different from the SlurmClaster from Dask. So, the whole pipeline will only run through first 2 steps. The last 2 steps need to run as single steps*
 
 ### Step and Pipeline Commands
 

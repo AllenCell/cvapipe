@@ -623,6 +623,8 @@ def single_cell_gen_one_fov(
                 "edge_flag": this_is_edge_cell,
                 "fov_id": row.FOVId,
                 "fov_path": raw_fn,
+                "fov_seg_path": row.MembraneSegmentationReadPath,
+                "struct_seg_path": row.StructureSegmentationReadPath,
                 "stack_min_z": stack_min_z,
                 "stack_max_z": stack_max_z,
                 "image_size": [list(raw_mem.shape)],

@@ -11,6 +11,7 @@ from aics_dask_utils import DistributedHandler
 from datastep import Step, log_run_params
 
 from image_classifier_3d.proj_tester import ProjectTester
+from ..prep_analysis_single_cell_ds import PrepAnalysisSingleCellDs
 
 ###############################################################################
 
@@ -22,10 +23,14 @@ log = logging.getLogger(__name__)
 class MitoClass(Step):
     def __init__(
         self,
-        direct_upstream_tasks: List["Step"] = [],
+        direct_upstream_tasks: List["Step"] = [PrepAnalysisSingleCellDs],
         config: Optional[Union[str, Path, Dict[str, str]]] = None,
     ):
-        super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
+        super().__init__(
+            direct_upstream_tasks=direct_upstream_tasks,
+            filepath_columns=["crop_raw", "crop_seg",],
+            config=config,
+        )
 
     @staticmethod
     def _finalize_cell_annotation(row_index: int, row: pd.Series) -> List:
@@ -98,15 +103,6 @@ class MitoClass(Step):
         """
         Run mitotic classifier and bad cell classifier.
 
-        Protected Parameters
-        --------------------
-        distributed_executor_address: Optional[str]
-            An optional executor address to pass to some computation engine.
-        debug: bool
-            A debug flag for the developer to use to manipulate how much data runs,
-            how it is processed, etc.
-            Default: False (Do not debug)
-
         Parameters
         ----------
         dataset: Union[str, Path]
@@ -114,6 +110,14 @@ class MitoClass(Step):
 
             **Required dataset columns:** *["CellId", "crop_raw",
             "crop_seg"]*
+
+        distributed_executor_address: Optional[str]
+            An optional executor address to pass to some computation engine.
+
+        debug: bool
+            A debug flag for the developer to use to manipulate how much data runs,
+            how it is processed, etc.
+            Default: False (Do not debug)
 
         Returns
         -------
@@ -140,7 +144,7 @@ class MitoClass(Step):
                 # One list will be row index
                 # One list will be the pandas series of every row
                 *zip(*list(df_pred_merge.iterrows())),
-                batch_size=5,
+                batch_size=20,
             )
 
         final_annotation = []
