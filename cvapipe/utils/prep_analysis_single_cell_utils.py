@@ -192,10 +192,12 @@ def overlap_area(p1, p2):
 
 
 def single_cell_gen_one_fov(
-    row_index: int, row: pd.Series, single_cell_dir: Path, overwrite: bool = False
+    row_index: int,
+    row: pd.Series,
+    single_cell_dir: Path,
+    per_fov_dir: Path,
+    overwrite: bool = False,
 ) -> List:
-    # TODO: currently, overwrite flag is not working.
-    # need to think more on how to deal with overwrite
     ########################################
     # parameters
     ########################################
@@ -204,6 +206,29 @@ def single_cell_gen_one_fov(
     standard_res_qcb = 0.108
 
     print(f"ready to process FOV: {row.FOVId}")
+
+    ########################################
+    # check if results already exist
+    ########################################
+    this_fov_path = per_fov_dir / Path(str(row.FOVId))
+    tag_file = this_fov_path / "done.txt"
+    single_fov_csv = this_fov_path / "fov_meta.csv"
+    cells_in_fov_csv = this_fov_path / "cell_meta.csv"
+    if this_fov_path.exists():
+        if overwrite:
+            rmtree(this_fov_path)
+            os.mkdir(this_fov_path)
+        else:
+            if tag_file.exists():
+                # this fov has been fully processed, simply return
+                # the path to fov csv and cells csv
+                return [single_fov_csv, cells_in_fov_csv]
+            else:
+                # this fov has only been partially processed, wipe out
+                rmtree(this_fov_path)
+                os.mkdir(this_fov_path)
+    else:
+        os.mkdir(this_fov_path)
 
     ########################################
     # load image and segmentation
@@ -391,7 +416,7 @@ def single_cell_gen_one_fov(
     #################################################################
     # calculate a dictionary to store FOV info
     #################################################################
-    df_fov_meta = {
+    fov_meta = {
         "FOVId": row.FOVId,
         "structure_name": row.Gene,
         "position": row.ColonyPosition,
@@ -414,10 +439,12 @@ def single_cell_gen_one_fov(
         "fov_seg_pass": full_fov_pass,
     }
 
+    df_fov_meta = pd.DataFrame(fov_meta)
+    df_fov_meta.to_csv(single_fov_csv, header=True, index=False)
     print(f"FOV info is done: {row.FOVId}, ready to loop through cells")
 
     # loop through all valid cells in this fov
-    df_cell_meta = []
+    cell_meta = []
     for list_idx, this_cell_index in enumerate(valid_cell):
         nuc_seg = nuc_seg_whole == this_cell_index
         mem_seg = mem_seg_whole == this_cell_index
@@ -537,7 +564,7 @@ def single_cell_gen_one_fov(
         all_seg = np.expand_dims(np.transpose(all_seg, (1, 0, 2, 3)), axis=0)
 
         crop_seg_path = thiscell_path / "segmentation.ome.tif"
-        writer = save_tif.OmeTiffWriter(crop_seg_path)
+        writer = save_tif.OmeTiffWriter(crop_seg_path, overwrite_file=True)
         writer.save(all_seg)
 
         # crop raw image
@@ -550,7 +577,7 @@ def single_cell_gen_one_fov(
         )
 
         crop_raw_path = thiscell_path / "raw.ome.tif"
-        writer = save_tif.OmeTiffWriter(crop_raw_path)
+        writer = save_tif.OmeTiffWriter(crop_raw_path, overwrite_file=True)
         writer.save(crop_raw_merged)
 
         ############################
@@ -597,6 +624,8 @@ def single_cell_gen_one_fov(
         # out for mitotic classifier
         img_out = build_one_cell_for_classification(crop_raw_merged, mem_seg)
         out_fn = thiscell_path / "for_mito_prediction.npy"
+        if out_fn.exists():
+            os.remove(out_fn)
         np.save(out_fn, img_out)
 
         #########################################
@@ -606,7 +635,7 @@ def single_cell_gen_one_fov(
             this_is_edge_cell = 0
 
         # write qcb cell meta
-        df_cell_meta.append(
+        cell_meta.append(
             {
                 "CellId": cell_id,
                 "structure_name": row.Gene,
@@ -638,6 +667,11 @@ def single_cell_gen_one_fov(
         )
         print(f"Cell {cell_id} is done")
 
+    df_cell_meta = pd.DataFrame(cell_meta)
+    df_cell_meta.to_csv(cells_in_fov_csv, header=True, index=False)
+
     #  single cell generation succeeds in this FOV
     print(f"FOV {row.FOVId} is done")
-    return [df_fov_meta, df_cell_meta]
+    with open(tag_file, "w") as f:
+        f.write("all cells completed")
+    return [single_fov_csv, cells_in_fov_csv]

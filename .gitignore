@@ -4,6 +4,8 @@
 # notebooks bcz eww (force add them if you must?)
 *.ipynb
 
+workflow_config.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
