@@ -46,7 +46,7 @@ class MultiResStructCompare(Step):
             "Nucleolus (Granular Component)",
             "Nuclear pores",
         ],
-        N_pairs_per_struct=10,
+        N_pairs_per_struct=100,
         mdata_cols=[
             "StructureShortName",
             "FOVId",
