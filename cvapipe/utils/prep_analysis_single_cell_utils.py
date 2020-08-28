@@ -7,9 +7,6 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-# import math
-import time
-
 from shutil import rmtree
 import re
 from scipy.ndimage import zoom
@@ -17,7 +14,7 @@ from scipy.ndimage.measurements import center_of_mass
 from skimage.morphology import dilation, ball
 from skimage.measure import regionprops, label
 import aicsimageio
-from aicsimageio import AICSImage
+from aicsimageio import AICSImage, imread
 from aicsimageio.writers import ome_tiff_writer as save_tif
 from aicsimageprocessing import resize, resize_to
 
@@ -233,10 +230,14 @@ def single_cell_gen_one_fov(
     ########################################
     # load image and segmentation
     ########################################
+    """
     if row.AlignedImageReadPath is None:
         raw_fn = row.SourceReadPath
     else:
         raw_fn = row.AlignedImageReadPath
+    """
+    # SourceReadPath should be always available
+    raw_fn = row.SourceReadPath
 
     # verify filepaths
     if not (
@@ -248,24 +249,17 @@ def single_cell_gen_one_fov(
         return [row.FOVId, True, "missing segmentation or raw files"]
 
     # get the raw image and split into different channels
-    start_time = time.time()
     raw_data = np.squeeze(AICSImage(raw_fn).data)
     raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
     raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
-    # find valid structure channel index
     raw_struct0 = raw_data[int(row.ChannelNumberStruct), :, :, :]
-    total_t = time.time() - start_time
-    print(f"Raw image load in: {total_t} sec")
 
     seg_reader = AICSImage(row.MembraneSegmentationReadPath)
     nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
     mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
 
     # get structure segmentation
-    # HACK: structure seg is not available in current query yet.
-    struct_seg_whole = np.ones_like(nuc_seg_whole)
-    # struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
-
+    struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
     print(f"Segmentation load successfully: {row.FOVId}")
 
     #########################################
@@ -329,8 +323,7 @@ def single_cell_gen_one_fov(
     valid_cell = valid_cell_0.copy()
 
     # if only one cell left or no cell left, just throw it away
-    # HACK: use 0 during testing, change to 1 in real run
-    if len(valid_cell_0) < 1:
+    if len(valid_cell_0) < 2:
         return [row.FOVId, False, "very few cells left after single cell QC"]
 
     print(f"single cell QC done in FOV: {row.FOVId}")
@@ -424,8 +417,8 @@ def single_cell_gen_one_fov(
         "str_filename": row.StructureSegmentationReadPath,
         "mem_seg_fn": row.MembraneSegmentationReadPath,
         "nuc_seg_fn": row.NucleusSegmentationReadPath,
-        "index_to_id_dict": [index_to_cellid_map],
-        "id_to_index_dict": [cellid_to_index_map],
+        "index_to_id_dict": index_to_cellid_map,
+        "id_to_index_dict": cellid_to_index_map,
         "xy_res": row.PixelScaleX,
         "z_res": row.PixelScaleZ,
         "stack_min_z": stack_min_z,
@@ -435,11 +428,12 @@ def single_cell_gen_one_fov(
         "well_name": row.WellName,
         "plateId": row.PlateId,
         "passage": row.Passage,
-        "image_size": [list(raw_mem.shape)],
+        "image_size": list(raw_mem.shape),
         "fov_seg_pass": full_fov_pass,
+        "imaging_mode": row.ImagingMode,
     }
 
-    df_fov_meta = pd.DataFrame(fov_meta)
+    df_fov_meta = pd.DataFrame([fov_meta])
     df_fov_meta.to_csv(single_fov_csv, header=True, index=False)
     print(f"FOV info is done: {row.FOVId}, ready to loop through cells")
 
@@ -615,9 +609,9 @@ def single_cell_gen_one_fov(
             "crop_seg": [
                 "dna_segmentation",
                 "membrane_segmentation",
-                "membrane_segmentation",
+                "membrane_segmentation_roof",
                 "struct_segmentation",
-                "struct_segmentation",
+                "struct_segmentation_roof",
             ],
         }
 
@@ -641,28 +635,30 @@ def single_cell_gen_one_fov(
                 "structure_name": row.Gene,
                 "pair": this_cell_is_pair,
                 "this_cell_nbr_complete": this_cell_nbr_complete,
-                "this_cell_nbr_dist_3d": [this_cell_nbr_dist_3d],
-                "this_cell_nbr_dist_2d": [this_cell_nbr_dist_2d],
-                "this_cell_nbr_overlap_area": [this_cell_nbr_overlap_area],
-                "roi": [roi],
+                "this_cell_nbr_dist_3d": this_cell_nbr_dist_3d,
+                "this_cell_nbr_dist_2d": this_cell_nbr_dist_2d,
+                "this_cell_nbr_overlap_area": this_cell_nbr_overlap_area,
+                "roi": roi,
                 "crop_raw": crop_raw_path,
                 "crop_seg": crop_seg_path,
-                "name_dict": [name_dict],
-                "scale_micron": [[0.108, 0.108, 0.108]],
+                "name_dict": name_dict,
+                "scale_micron": [0.108, 0.108, 0.108],
                 "edge_flag": this_is_edge_cell,
                 "fov_id": row.FOVId,
                 "fov_path": raw_fn,
                 "fov_seg_path": row.MembraneSegmentationReadPath,
                 "struct_seg_path": row.StructureSegmentationReadPath,
+                "this_cell_index": this_cell_index,
                 "stack_min_z": stack_min_z,
                 "stack_max_z": stack_max_z,
-                "image_size": [list(raw_mem.shape)],
+                "image_size": list(raw_mem.shape),
                 "plateId": row.PlateId,
                 "position": row.ColonyPosition,
                 "scope_id": row.InstrumentId,
                 "well_id": row.WellId,
                 "well_name": row.WellName,
                 "passage": row.Passage,
+                "imaging_mode": row.ImagingMode
             }
         )
         print(f"Cell {cell_id} is done")

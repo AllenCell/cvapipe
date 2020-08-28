@@ -108,7 +108,7 @@ def create_aics_dataset(args: Args):
         data = data.reset_index(drop=True)
 
         # Temporary until datasets 83 and 84 have structure segmentations
-        data = data.loc[~data["DataSetId"].isin([83, 84])]
+        # data = data.loc[~data["DataSetId"].isin([83, 84])]
 
         # Sample the data
         if args.sample != 1.0:
