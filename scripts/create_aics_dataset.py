@@ -10,6 +10,8 @@ from pathlib import Path
 import pandas as pd
 from lkaccess import LabKey, contexts
 
+from cvapipe.constants import DatasetFields
+
 ###############################################################################
 
 logging.basicConfig(
