@@ -126,7 +126,7 @@ def create_aics_dataset(args: Args):
             else:
                 log.info(f"Sampling dataset with {args.sample} cells from each line.")
                 data = data.groupby("CellLineId", group_keys=False)
-                data = data.apply(pd.DataFrame.head, n=args.sample)
+                data = data.apply(pd.DataFrame.head, n=int(args.sample))
                 data = data.reset_index(drop=True)
 
         # Save to Parquet

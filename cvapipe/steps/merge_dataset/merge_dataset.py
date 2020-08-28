@@ -27,7 +27,6 @@ class MergeDataset(Step):
         super().__init__(
             direct_upstream_tasks=direct_upstream_tasks,
             filepath_columns=[
-                DatasetFields.AlignedImageReadPath,
                 DatasetFields.NucleusContourReadPath,
                 DatasetFields.MembraneContourReadPath,
                 DatasetFields.NucleusSegmentationReadPath,
