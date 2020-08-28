@@ -13,7 +13,6 @@ from datastep import Step, log_run_params
 
 from .utils import (
     compute_distance_metric,
-    make_pairs_df,
     clean_up_results,
     make_plot,
 )
@@ -36,29 +35,26 @@ class MultiResStructCompare(Step):
     @log_run_params
     def run(
         self,
-        structs=[
-            "Actin filaments",
-            "Mitochondria",
-            "Microtubules",
-            "Nuclear envelope",
-            "Desmosomes",
-            "Plasma membrane",
-            "Nucleolus (Granular Component)",
-            "Nuclear pores",
-        ],
-        N_pairs_per_struct=100,
         mdata_cols=[
-            "StructureShortName",
-            "FOVId",
-            "CellIndex",
             "CellId",
-            "StandardizedFOVPath",
-            "CellImage3DPath",
+            "CellIndex",
+            "FOVId",
+            "save_dir",
+            "save_reg_path",
+            "StructureDisplayName",
+            "GeneratedStructureName_i",
+            "GeneratedStructureName_j",
+            "GeneratedStructureInstance_i",
+            "GeneratedStructureInstance_j",
+            "GeneratedStructuePath_i",
+            "GeneratedStructuePath_j",
         ],
         px_size=0.29,
         image_dims_crop_size=(64, 160, 96),
-        par_dir=Path("/allen/aics/modeling/ritvik/projects/actk/"),
-        input_csv_loc=Path("local_staging/singlecellimages/manifest.csv"),
+        input_csv_loc=Path(
+            "/allen/aics/modeling/rorydm/results/multiscale_structure_similarity/"
+            "generated_gfp_images/generated_structures.csv"
+        ),
         distributed_executor_address: Optional[str] = None,
         batch_size: Optional[int] = None,
         **kwargs,
@@ -66,43 +62,33 @@ class MultiResStructCompare(Step):
         """
         Parameters
         ----------
-        structs: List[str]
-            Which tagged structures to include in the analysis.
-            Default: [
-                "Endoplasmic reticulum",
-                "Desmosomes",
-                "Mitochondria",
-                "Golgi",
-                "Microtubules",
-                "Nuclear envelope",
-                "Nucleolus (Dense Fibrillar Component)",
-                "Nucleolus (Granular Component)",
-            ]
-        N_pairs_per_struct: int
-            How many pairs of GFP instances per tagged structure to sample
-            from the bigger input dataset.
-            Default: 100
         mdata_cols: List[str]
-            Which columns from the input dataset to include n the output as metadata
+            Which columns from the input dataset to include in the output as metadata
             Default: [
-                "StructureShortName",
-                "FOVId",
-                "CellIndex",
                 "CellId",
-                "StandardizedFOVPath",
-                "CellImage3DPath",
+                "CellIndex",
+                "FOVId",
+                "save_dir",
+                "save_reg_path",
+                "StructureDisplayName",
+                "GeneratedStructureName_i",
+                "GeneratedStructureName_j",
+                "GeneratedStructureInstance_i",
+                "GeneratedStructureInstance_j",
+                "GeneratedStructuePath_i",
+                "GeneratedStructuePath_j",
             ]
         px_size: float
             How big are the (cubic) input pixels in micrometers
             Default: 0.29
         image_dims_crop_size: Tuple[int]
             How to crop the input images before the resizing pyamid begins
-        par_dir: pathlib.Path
-            Parent directory of the input csv, since it's not yet a step.
-            Default: Path("/allen/aics/modeling/jacksonb/projects/actk/")
         input_csv_loc: pathlib.Path
-            Path to input csv, relative to par_dir
-            Default: Path("local_staging/singlecellimages/manifest.csv")
+            Path to input csv
+            Default: Path(
+                "/allen/aics/modeling/rorydm/results/multiscale_structure_similarity"\
+                "/generated_gfp_images/generated_structures.csv"
+            )
 
         Returns
         -------
@@ -111,20 +97,12 @@ class MultiResStructCompare(Step):
         """
 
         # Adding hidden attributes to use in compute distance metric function
-        self._par_dir = par_dir
         self._input_csv_loc = input_csv_loc
         self._px_size = px_size
 
         # Read dataset
-        df = pd.read_csv(par_dir / input_csv_loc)
-
-        # subset down to only N_pairs_per_struct
-        dataset = make_pairs_df(
-            df,
-            structs=structs,
-            N_pairs_per_struct=N_pairs_per_struct,
-            mdata_cols=mdata_cols,
-        )
+        df = pd.read_csv(input_csv_loc)
+        dataset = df[mdata_cols]
 
         # Empty futures list
         distance_metric_futures = []
@@ -139,7 +117,6 @@ class MultiResStructCompare(Step):
                 [mdata_cols for i in range(len(dataset))],
                 [px_size for i in range(len(dataset))],
                 [image_dims_crop_size for i in range(len(dataset))],
-                [par_dir for i in range(len(dataset))],
             )
 
             distance_metric_futures.append(distance_metric_future)
@@ -153,13 +130,13 @@ class MultiResStructCompare(Step):
         self.manifest = pd.DataFrame(columns=["Description", "path"])
 
         # where to save outputs
-        pairwise_dir = (self.step_local_staging_dir / "pairwise_metrics")
+        pairwise_dir = self.step_local_staging_dir / "pairwise_metrics"
         pairwise_dir.mkdir(parents=True, exist_ok=True)
         pairwise_loc = pairwise_dir / "multires_pairwise_similarity.csv"
-        plot_dir = (self.step_local_staging_dir / "pairwise_plots")
+        plot_dir = self.step_local_staging_dir / "pairwise_plots"
         plot_dir.mkdir(parents=True, exist_ok=True)
         plot_loc = plot_dir / "multi_resolution_image_correlation.png"
-        
+
         # save pairwise dataframe to csv
         df_final.to_csv(pairwise_loc, index=False)
         self.manifest = self.manifest.append(
