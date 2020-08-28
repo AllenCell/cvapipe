@@ -6,6 +6,7 @@ import logging
 import sys
 import traceback
 from pathlib import Path
+
 import pandas as pd
 from lkaccess import LabKey, contexts
 
@@ -107,8 +108,11 @@ def create_aics_dataset(args: Args):
         data = data.drop_duplicates(subset=["CellId"], keep="first")
         data = data.reset_index(drop=True)
 
-        # Temporary until datasets 83 and 84 have structure segmentations
-        data = data.loc[~data["DataSetId"].isin([83, 84])]
+        # Merge Aligned and Source read path columns
+        # AlignedImageReadPath is the "better" of the two
+        data[DatasetFields.SourceReadPath] = data[
+            DatasetFields.AlignedImageReadPath
+        ].combine_first(data[DatasetFields.SourceReadPath])
 
         # Sample the data
         if args.sample != 1.0:
