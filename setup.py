@@ -61,6 +61,8 @@ requirements = [
     "Pillow",
     "pyarrow",
     "scipy",
+    "matplotlib",
+    "seaborn",
     "tqdm",
     "scipy",
     "scikit-image",
@@ -73,12 +75,18 @@ aics_data_requirements = [
     "lkaccess",
 ]
 
+integrated_cell_requirements = [
+    "torch==1.2.0",
+    "torchvision==0.2.1",
+    "natsort==5.3.3",
+]
+
 extra_requirements = {
     "setup": setup_requirements,
     "test": test_requirements,
     "dev": dev_requirements,
     "aics": aics_data_requirements,
-    "all": [*requirements, *dev_requirements,],
+    "all": [*requirements, *dev_requirements, *integrated_cell_requirements],
 }
 
 setup(
