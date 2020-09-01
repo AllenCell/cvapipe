@@ -80,33 +80,21 @@ class GenerateGFPInstantiations(Step):
         """
         Parameters
         ----------
-        mdata_cols: List[str]
-            Which columns from the input dataset to include in the output as metadata
-            Default: [
-                "CellId",
-                "CellIndex",
-                "FOVId",
-                "save_dir",
-                "save_reg_path",
-                "StructureDisplayName",
-                "GeneratedStructureName_i",
-                "GeneratedStructureName_j",
-                "GeneratedStructureInstance_i",
-                "GeneratedStructureInstance_j",
-                "GeneratedStructuePath_i",
-                "GeneratedStructuePath_j",
-            ]
-        px_size: float
-            How big are the (cubic) input pixels in micrometers
-            Default: 0.29
-        image_dims_crop_size: Tuple[int]
-            How to crop the input images before the resizing pyamid begins
+        GPUId: int
+            Which GPU to use
+        REF_MODEL_KWARGS: dict
+            Dictionary of key to load corresponding trained reference model via IC
+        TARG_MODEL_KWARGS: dict
+            Dictionary of key to load corresponding trained reference model via IC
+        STRUCTURES_TO_GEN: list
+            List of structures to generate    
+        BATCH_SIZE: int
+        N_PAIRS_PER_STRUCTURE: int
+            Number of structure pairs to generate to get CI estimates
         input_csv_loc: pathlib.Path
-            Path to input csv
-            Default: Path(
-                "/allen/aics/modeling/rorydm/results/multiscale_structure_similarity"\
-                "/generated_gfp_images/generated_structures.csv"
-            )
+            Path to input csv containing list of CellIds
+            Default: "/allen/aics/modeling/caleb"
+        + "/dfNearestDistances_CloserThanK_Euclidean_NumDims_32_K_16.csv",
 
         Returns
         -------
@@ -123,10 +111,6 @@ class GenerateGFPInstantiations(Step):
             GPUId, REF_MODEL_KWARGS, TARG_MODEL_KWARGS
         )
 
-        # Save generated images to images folder
-        image_dir = self.step_local_staging_dir / "images"
-        image_dir.mkdir(parents=True, exist_ok=True)
-
         # Generate all structures that the model is trained on
         if not STRUCTURES_TO_GEN or STRUCTURES_TO_GEN == "All":
             STRUCTURES_TO_GEN = list(u_class_names)
@@ -137,11 +121,10 @@ class GenerateGFPInstantiations(Step):
         ]
         structure_to_gen_ids = [torch.tensor([x]) for x in structure_to_gen_ids]
 
-        # Make empty dataframes
-        df = pd.DataFrame()
-        all_cell_metadata = pd.DataFrame()
-
         corr_pair_inds = ["i", "j"]
+
+        # Make empty dataframes
+        df_all_cellids = pd.DataFrame()
 
         # Loop over all CellIds
         with tqdm(
@@ -151,8 +134,16 @@ class GenerateGFPInstantiations(Step):
         ) as pbar:
             for ThisCellId in all_cellids:
 
+                # Make empty dataframes
+                df = pd.DataFrame()
+
                 # pick this based on pca location or whatever
                 MY_CELL_ID = ThisCellId
+
+                # Save generated images to images folder
+                image_path = "images" + "_CellID_" + str(MY_CELL_ID)
+                image_dir = self.step_local_staging_dir / image_path
+                image_dir.mkdir(parents=True, exist_ok=True)
 
                 # grap metadata
                 cell_metadata = dp.csv_data[dp.csv_data.CellId == MY_CELL_ID].drop(
@@ -220,9 +211,8 @@ class GenerateGFPInstantiations(Step):
                             for b, im_tensor in zip(batch, target_gen_batch):
                                 struct_safe_name = structure.replace(" ", "_").lower()
                                 img_path = (
-                                    image_dir
-                                    / f"generated_gfp_image_struct_{struct_safe_name}"
-                                    f"_instance_{b}_{ij}.ome.tiff"
+                                    image_dir / f"generated_gfp_image_struct_"
+                                    f"{struct_safe_name}_instance_{b}_{ij}.ome.tiff"
                                 )
                                 im_write(im_tensor, img_path)
 
@@ -232,14 +222,14 @@ class GenerateGFPInstantiations(Step):
                                 pbar.update(1)
 
                     df = df.append(df_tmp)
-                    all_cell_metadata = all_cell_metadata.append(cell_metadata)
 
-            # merge df with metadata for cell
-            df = df.reset_index(drop=True)
-            df_out = all_cell_metadata.merge(df)
+                # merge df with metadata for cell
+                df = df.reset_index(drop=True)
+                df_out = cell_metadata.merge(df)
+                df_all_cellids = df_all_cellids.append(df_out)
 
         # save df
-        self.manifest = df_out
+        self.manifest = df_all_cellids
         # save out manifest
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"
         self.manifest.to_csv(manifest_save_path)
