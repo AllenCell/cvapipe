@@ -9,12 +9,12 @@ from typing import Dict, List, Optional, Union
 import dask.dataframe as dd
 import pandas as pd
 import numpy as np
-import itertools
 import pyarrow.parquet as pq
 from aics_dask_utils import DistributedHandler
 from datastep import Step, log_run_params
 
 from ...constants import DatasetFields
+from ..validate_dataset import ValidateDataset
 from cvapipe.utils.prep_analysis_single_cell_utils import single_cell_gen_one_fov
 
 ###############################################################################
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 class PrepAnalysisSingleCellDs(Step):
     def __init__(
         self,
-        direct_upstream_tasks: List["Step"] = [],
+        direct_upstream_tasks: List["Step"] = [ValidateDataset],
         config: Optional[Union[str, Path, Dict[str, str]]] = None,
     ):
         super().__init__(direct_upstream_tasks=direct_upstream_tasks, config=config)
@@ -121,6 +121,11 @@ class PrepAnalysisSingleCellDs(Step):
         single_cell_dir.mkdir(exist_ok=True)
         log.info(f"single cells will be saved into: {single_cell_dir}")
 
+        # create per fov directory
+        per_fov_dir = self.step_local_staging_dir / "per_fov"
+        per_fov_dir.mkdir(exist_ok=True)
+        log.info(f"per fov result will be saved into: {per_fov_dir}")
+
         # Process each row
         with DistributedHandler(distributed_executor_address) as handler:
             # Start processing
@@ -133,8 +138,9 @@ class PrepAnalysisSingleCellDs(Step):
                 # Pass the other parameters as list of the same thing for each
                 # mapped function call
                 [single_cell_dir for i in range(len(fov_dataset))],
+                [per_fov_dir for i in range(len(fov_dataset))],
                 [overwrite for i in range(len(fov_dataset))],
-                batch_size=10,
+                batch_size=90,
             )
 
         # Generate fov paths rows
@@ -155,12 +161,12 @@ class PrepAnalysisSingleCellDs(Step):
                     )
 
         # save fov datasets
-        final_fov_meta = pd.DataFrame(fov_meta_gather)
+        final_fov_meta = pd.concat([pd.read_csv(f) for f in fov_meta_gather])
         fov_manifest_save_path = self.step_local_staging_dir / "fov_dataset.csv"
         final_fov_meta.to_csv(fov_manifest_save_path, index=False)
 
         # build output datasets
-        final_cell_meta = pd.DataFrame(list(itertools.chain(*cell_meta_gather)))
+        final_cell_meta = pd.concat([pd.read_csv(f) for f in cell_meta_gather])
         self.manifest = final_cell_meta
         cell_manifest_save_path = self.step_local_staging_dir / "manifest.csv"
         final_cell_meta.to_csv(cell_manifest_save_path, index=False)

@@ -66,11 +66,12 @@ requirements = [
     "scikit-image",
     "aicsimageio",
     "aicsimageprocessing",
+    "image-classifier-3d",
 ]
 
 
 aics_data_requirements = [
-    "lkaccess",
+    "lkaccess>=1.4.19",
 ]
 
 extra_requirements = {
@@ -78,7 +79,10 @@ extra_requirements = {
     "test": test_requirements,
     "dev": dev_requirements,
     "aics": aics_data_requirements,
-    "all": [*requirements, *dev_requirements,],
+    "all": [
+        *requirements,
+        *dev_requirements,
+    ],
 }
 
 setup(
