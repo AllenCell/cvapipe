@@ -35,7 +35,7 @@ class PcaPathCells(Step):
             "variance/05202020_Align-IND_Chirality-OFF/manifest.csv"
         ),
         pcs=[1, 2, 3, 4, 5, 6, 7, 8],
-        path=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
+        path_in_stdv=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
         dist_cols=[
             "DNA_MEM_PC1",
             "DNA_MEM_PC2",
@@ -63,8 +63,9 @@ class PcaPathCells(Step):
         pcs: List[int]
             Which pcs do we want to trace through
             Default: [1,2,3,4,5,6,7,8]
-        path: np.array
-            Path containing points along each PC axis where we find nearest cells
+        path_in_stdv: np.array
+            Path containing points along each PC axis where we find nearest cells.
+            Units are in stdv of that dimension.
             Default: np.array([-2.0, -1.5, -1.0, -0.5,  0.0,  0.5,  1.0,  1.5,  2.0])
         dist_cols: List[str]
             Which columns in the `pca_csv_loc` contribute to distance computations?
@@ -102,10 +103,13 @@ class PcaPathCells(Step):
         df_pca = pd.read_csv(pca_csv_loc)
 
         for pc in pcs:
+
+            pc_stdv = df_pca[f"DNA_MEM_PC{pc}"].std()
+
             df_cells = scan_pc_for_cells(
                 df_pca,
                 pc=pc,
-                path=path,
+                path=path_in_stdv * pc_stdv,
                 dist_cols=dist_cols,
                 metric=metric,
                 id_col=id_col,
