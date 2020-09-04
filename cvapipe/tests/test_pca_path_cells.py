@@ -48,5 +48,5 @@ def test_pca_path_cells(
         assert len(df_pc) == len(path) * N_cells
         assert (
             list(df_pc.columns)
-            == [id_col, "loc", f"{metric} distance to loc"] + dist_cols
+            == [id_col, "location", f"{metric} distance to location"] + dist_cols
         )
