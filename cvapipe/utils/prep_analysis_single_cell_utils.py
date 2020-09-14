@@ -674,7 +674,7 @@ def single_cell_gen_one_fov(
                 "well_id": row.WellId,
                 "well_name": row.WellName,
                 "passage": row.Passage,
-                "imaging_mode": row.ImagingMode
+                "imaging_mode": row.ImagingMode,
             }
         )
         print(f"Cell {cell_id} is done")

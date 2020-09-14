@@ -55,9 +55,7 @@ class ValidateDataset(Step):
 
     @log_run_params
     def run(
-        self,
-        raw_dataset: Union[str, Path] = "aics_p4_data.parquet",
-        **kwargs,
+        self, raw_dataset: Union[str, Path] = "aics_p4_data.parquet", **kwargs,
     ) -> Path:
         """
         Validate that the provided dataset contains all the required fields.
