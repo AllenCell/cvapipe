@@ -209,6 +209,7 @@ def single_cell_gen_one_fov(
     ########################################
     this_fov_path = per_fov_dir / Path(str(row.FOVId))
     tag_file = this_fov_path / "done.txt"
+    bad_tag_file = this_fov_path / "bad.txt"
     single_fov_csv = this_fov_path / "fov_meta.csv"
     cells_in_fov_csv = this_fov_path / "cell_meta.csv"
     if this_fov_path.exists():
@@ -221,9 +222,13 @@ def single_cell_gen_one_fov(
                 # the path to fov csv and cells csv
                 return [single_fov_csv, cells_in_fov_csv]
             else:
-                # this fov has only been partially processed, wipe out
-                rmtree(this_fov_path)
-                os.mkdir(this_fov_path)
+                if bad_tag_file.exists():
+                    # this fov is known to be a bad one, no need to re-run
+                    return [row.FOVId, False, "bad FOV, check text file for detail"]
+                else:
+                    # this fov has only been partially processed, wipe out
+                    rmtree(this_fov_path)
+                    os.mkdir(this_fov_path)
     else:
         os.mkdir(this_fov_path)
 
@@ -248,24 +253,31 @@ def single_cell_gen_one_fov(
         # fail
         return [row.FOVId, True, "missing segmentation or raw files"]
 
-    # get the raw image and split into different channels
-    raw_data = np.squeeze(AICSImage(raw_fn).data)
-    raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
-    raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
-    raw_struct0 = raw_data[int(row.ChannelNumberStruct), :, :, :]
+    raw_reader = AICSImage(raw_fn)
+    if raw_reader.shape[0] > 1:  # multi-scene
+        return [row.FOVId, False, "multi scene image"]
 
-    seg_reader = AICSImage(row.MembraneSegmentationReadPath)
-    nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
-    mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
+    try:
+        # get the raw image and split into different channels
+        raw_data = np.squeeze(raw_reader.data)
+        raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
+        raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
+        raw_struct0 = raw_data[int(row.ChannelNumberStruct), :, :, :]
 
-    # get structure segmentation
-    struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
-    print(f"Segmentation load successfully: {row.FOVId}")
+        assert row.MembraneSegmentationReadPath == row.NucleusSegmentationReadPath
+        seg_reader = AICSImage(row.MembraneSegmentationReadPath)
+        nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
+        mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
+
+        # get structure segmentation
+        struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
+        print(f"Segmentation load successfully: {row.FOVId}")
+    except (Exception, AssertionError) as e:
+        return [row.FOVId, True, e]
 
     #########################################
     # run single cell qc in this fov
     #########################################
-    # try:
     ######################
     min_mem_size = 70000
     min_nuc_size = 10000
@@ -277,6 +289,8 @@ def single_cell_gen_one_fov(
     # double check big failure, quick reject
     if mem_seg_whole.max() <= 3 or nuc_seg_whole.max() <= 3:
         # bad images, but not bug, use "False"
+        with open(bad_tag_file, "w") as f:
+            f.write("very few cells segmented")
         return [row.FOVId, False, "very few cells segmented"]
 
     # prune the results (remove cells touching image boundary)
@@ -324,6 +338,8 @@ def single_cell_gen_one_fov(
 
     # if only one cell left or no cell left, just throw it away
     if len(valid_cell_0) < 2:
+        with open(bad_tag_file, "w") as f:
+            f.write("very few cells left after single cell QC")
         return [row.FOVId, False, "very few cells left after single cell QC"]
 
     print(f"single cell QC done in FOV: {row.FOVId}")
@@ -642,7 +658,7 @@ def single_cell_gen_one_fov(
                 "crop_raw": crop_raw_path,
                 "crop_seg": crop_seg_path,
                 "name_dict": name_dict,
-                "scale_micron": [0.108, 0.108, 0.108],
+                "scale_micron": [0.108333, 0.108333, 0.108333],
                 "edge_flag": this_is_edge_cell,
                 "fov_id": row.FOVId,
                 "fov_path": raw_fn,
