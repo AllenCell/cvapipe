@@ -81,16 +81,6 @@ class PrepAnalysisSingleCellDs(Step):
             dataset = pq.read_table(Path(dataset).expanduser().resolve(strict=True))
             dataset = dataset.to_pandas()
 
-        # HACK: for some reason the structure segmentation read path is empty
-        # HACK: temporary solution, use membrane seg as fake structure seg
-        dataset["StructureSegmentationReadPath"] = dataset[
-            "MembraneSegmentationReadPath"
-        ]
-
-        # HACK: AlignmentReadPath should exist in final query
-        if "AlignedImageReadPath" not in dataset.columns:
-            dataset = dataset.assign(AlignedImageReadPath=None)
-
         # create a fov data frame
         fov_dataset = dataset.copy()
         fov_dataset.drop_duplicates(subset=["FOVId"], keep="first", inplace=True)
