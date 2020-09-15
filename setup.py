@@ -42,7 +42,12 @@ step_workflow_requirements = [
     "bokeh>=2.1.0",
     "dask[bag]>=2.21.0",
     "dask_jobqueue>=0.7.0",
-    "datastep>=0.1.8",
+    # SPECIAL RELEASE OF DATASTEP TO RESOLVE MALFORMED MANIFEST
+    # https://github.com/AllenCellModeling/datastep/tree/special-release
+    #
+    # Fortunately we left the 0.0.* series of releases empty
+    # New datastep projects will by default use the 0.1.* series of releases
+    "datastep==0.0.1",
     "distributed>=2.21.0",
     "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
