@@ -151,7 +151,7 @@ class GenerateGFPInstantiations(Step):
                 )
 
                 # search for which split this id is in
-                splits = {k for k,v in dp.data.items() if MY_CELL_ID in v["CellId"]}
+                splits = {k for k, v in dp.data.items() if MY_CELL_ID in v["CellId"]}
                 assert len(splits) == 1
                 split = splits.pop()
 
@@ -162,7 +162,7 @@ class GenerateGFPInstantiations(Step):
 
                 # grab the sampled image
                 gfp_img, struct_ind, ref_img = dp.get_sample(
-                    train_or_test=split, inds=[cell_index]
+                    train_or_test=split, inds=[index_in_split]
                 )
 
                 # move ref image to gpu
