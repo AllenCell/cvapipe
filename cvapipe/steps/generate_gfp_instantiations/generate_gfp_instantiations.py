@@ -145,19 +145,20 @@ class GenerateGFPInstantiations(Step):
                 image_dir = self.step_local_staging_dir / image_path
                 image_dir.mkdir(parents=True, exist_ok=True)
 
-                # grap metadata
+                # grab metadata
                 cell_metadata = dp.csv_data[dp.csv_data.CellId == MY_CELL_ID].drop(
-                    columns=["level_0", "Unnamed: 0"]
+                    columns=["level_0", "Unnamed: 0", "index"]
                 )
 
-                # find dp index from ID
-                cell_index = cell_metadata.index.item()
-                # cell_index = cell_metadata['CellId'].item()
-
                 # search for which split this id is in
-                for k, v in dp.data.items():
-                    if cell_index in v["inds"]:
-                        split = k
+                splits = {k for k,v in dp.data.items() if MY_CELL_ID in v["CellId"]}
+                assert len(splits) == 1
+                split = splits.pop()
+
+                # find the index in the split
+                index_in_split = np.where(dp.data[split]["CellId"] == MY_CELL_ID)[0]
+                assert len(index_in_split) == 1
+                index_in_split = index_in_split[0]
 
                 # grab the sampled image
                 gfp_img, struct_ind, ref_img = dp.get_sample(
