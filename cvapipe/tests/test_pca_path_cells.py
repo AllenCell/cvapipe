@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +10,7 @@ def test_pca_path_cells(
     N_input_cells=1000,
     pcs=[1, 2, 3, 4, 5, 6, 7, 8],
     path=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
-    dist_cols=[f"PC_{i}" for i in range(1, 8 + 1)],
+    dist_cols=[f"DNA_MEM_PC{i}" for i in range(1, 8 + 1)],
     metric="euclidean",
     id_col="id",
     N_cells=5,
@@ -22,7 +19,10 @@ def test_pca_path_cells(
     df = pd.DataFrame(
         {
             **{"id": range(N_input_cells)},
-            **{f"PC_{i}": np.random.randn(N_input_cells) for i in range(1, 8 + 1)},
+            **{
+                f"DNA_MEM_PC{i}": np.random.randn(N_input_cells)
+                for i in range(1, 8 + 1)
+            },
         }
     )
     pca_csv_loc = "example_pcas.csv"
@@ -48,5 +48,5 @@ def test_pca_path_cells(
         assert len(df_pc) == len(path) * N_cells
         assert (
             list(df_pc.columns)
-            == [id_col, "loc", f"{metric} distance to loc"] + dist_cols
+            == [id_col, "location", f"{metric} distance to location"] + dist_cols
         )

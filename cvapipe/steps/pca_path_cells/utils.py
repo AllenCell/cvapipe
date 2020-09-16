@@ -18,21 +18,21 @@ def find_closest_cells(
     metric="euclidean",
     id_col="CellId",
     N_cells=10,
-    loc=np.array([0, 0, 0, 0, 0, 0, 0, 0]),
+    location=np.array([0, 0, 0, 0, 0, 0, 0, 0]),
 ):
     """
-    looks through df and finds N closest cells (rows) to loc
+    looks through df and finds N closest cells (rows) to location
     using all dist_cols as equally weighted embedding dimensions
     metric can be any string that works with scipy.spatial.distance.cdist
-
     Returns a len(N_cells) df of cell ids and columns matching dist_cols_pattern
     cells are sorted by distance and also have an additional columns of overall distance
     """
 
-    loc_2d = np.expand_dims(loc, 0)
+    loc_2d = np.expand_dims(location, 0)
     dists = np.squeeze(cdist(df[dist_cols], loc_2d, metric))
-    dist_col = f"{metric} distance to loc"
-    df_dists = pd.DataFrame({dist_col: dists, "loc": [str(loc)] * len(df)})
+    dist_col = f"{metric} distance to location"
+    loc_str = ", ".join([f"{loc:.1f}" for loc in location])
+    df_dists = pd.DataFrame({dist_col: dists, "location": [loc_str] * len(df)})
 
     df_ids_and_dims = df[[id_col, *dist_cols]]
 
@@ -41,7 +41,7 @@ def find_closest_cells(
     return (
         df_out.sort_values(by=[dist_col])
         .head(N_cells)
-        .reindex([id_col, "loc", dist_col, *dist_cols], axis="columns")
+        .reindex([id_col, "location", dist_col, *dist_cols], axis="columns")
     )
 
 
@@ -79,7 +79,7 @@ def scan_pc_for_cells(
             metric=metric,
             id_col=id_col,
             N_cells=N_cells,
-            loc=point,
+            location=point,
         )
 
         df_out = df_out.append(df_point)

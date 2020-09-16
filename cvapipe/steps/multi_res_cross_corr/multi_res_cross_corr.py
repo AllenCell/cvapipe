@@ -14,7 +14,7 @@ from datastep import Step, log_run_params
 from .utils import (
     compute_distance_metric,
     clean_up_results,
-    make_plot,
+    make_cross_corr_dataframe,
 )
 
 ###############################################################################
@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 ###############################################################################
 
 
-class MultiResStructCompare(Step):
+class MultiResCrossCorr(Step):
     def __init__(
         self,
         direct_upstream_tasks: List["Step"] = [],
@@ -52,8 +52,8 @@ class MultiResStructCompare(Step):
         px_size=0.29,
         image_dims_crop_size=(64, 160, 96),
         input_csv_loc=Path(
-            "/allen/aics/modeling/rorydm/results/multiscale_structure_similarity/"
-            "generated_gfp_images/generated_structures.csv"
+            "/allen/aics/modeling/ritvik/projects/cvapipe/local_staging/"
+            "/generategfpinstantiations_tmp/images_CellID_987/manifest.csv"
         ),
         distributed_executor_address: Optional[str] = None,
         batch_size: Optional[int] = None,
@@ -86,8 +86,8 @@ class MultiResStructCompare(Step):
         input_csv_loc: pathlib.Path
             Path to input csv
             Default: Path(
-                "/allen/aics/modeling/rorydm/results/multiscale_structure_similarity"\
-                "/generated_gfp_images/generated_structures.csv"
+                "/allen/aics/modeling/ritvik/projects/cvapipe/local_staging/"
+                "/generategfpinstantiations_tmp/images_CellID_987/manifest.csv"
             )
 
         Returns
@@ -104,7 +104,8 @@ class MultiResStructCompare(Step):
         df = pd.read_csv(self._input_csv_loc)
         dataset = df[mdata_cols]
 
-        log.info(f"{len(dataset)}")
+        # Make cross correlation dataset
+        dataset = make_cross_corr_dataframe(dataset)
 
         # Empty futures list
         distance_metric_futures = []
@@ -135,21 +136,11 @@ class MultiResStructCompare(Step):
         pairwise_dir = self.step_local_staging_dir / "pairwise_metrics"
         pairwise_dir.mkdir(parents=True, exist_ok=True)
         pairwise_loc = pairwise_dir / "multires_pairwise_similarity.csv"
-        plot_dir = self.step_local_staging_dir / "pairwise_plots"
-        plot_dir.mkdir(parents=True, exist_ok=True)
-        plot_loc = plot_dir / "multi_resolution_image_correlation.png"
 
         # save pairwise dataframe to csv
         df_final.to_csv(pairwise_loc, index=False)
         self.manifest = self.manifest.append(
             {"Description": "raw similarity scores", "path": pairwise_loc},
-            ignore_index=True,
-        )
-
-        # make a plot
-        make_plot(data=df_final, save_loc=plot_loc)
-        self.manifest = self.manifest.append(
-            {"Description": "plot of similarity vs resolution", "path": plot_loc},
             ignore_index=True,
         )
 

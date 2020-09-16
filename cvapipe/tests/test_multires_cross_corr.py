@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from cvapipe.steps import MultiResStructCompare
+from cvapipe.steps import MultiResCrossCorr
 
 EXPECTED_COLUMNS = [
-    "CellId",
+    "GeneratedStructureName_i_1",
+    "GeneratedStructureName_i_2",
     "Pearson Correlation",
     "Resolution (micrometers)",
 ]
@@ -16,9 +17,9 @@ EXPECTED_COLUMNS = [
 
 def test_run(data_dir):
 
-    multiresstructcompare = MultiResStructCompare()
+    multirescrosscorr = MultiResCrossCorr()
 
-    output = multiresstructcompare.run(
+    output = multirescrosscorr.run(
         input_csv_loc=Path(
             "/allen/aics/modeling/ritvik/projects/cvapipe/"
             + "cvapipe/tests/data/example_dataset_multi_res_struct_compare.csv"
