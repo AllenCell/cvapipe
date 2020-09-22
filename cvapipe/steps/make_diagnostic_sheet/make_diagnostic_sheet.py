@@ -19,9 +19,17 @@ from .diagnostic_sheet_utils import (
     get_normed_image_array,
     select_and_adjust_segmentation_ceiling,
     crop_raw_channels_with_segmentation,
+    get_thumbnail,
     HTMLWriter,
 )
 
+# get_slice_highest_intensity,
+# pct_normalization_and_8bit,
+# minmax_normalization_and_8bit,
+# get_bottom_and_top_slices,
+# get_slice_range,
+# get_cell_center,
+# get_top,
 
 plt.style.use("dark_background")
 
@@ -30,6 +38,34 @@ plt.style.use("dark_background")
 log = logging.getLogger(__name__)
 
 ###############################################################################
+
+
+class ZSliceRanges:
+    CETN2 = ([90, 100], "mem")
+    TUBA1B = ([88, 88], "mem")
+    PXN = ([0, 10], "mem")
+    TJP1 = ([88, 88], "mem")
+    LMNB1 = ([50, 50], "nuc")
+    NUP153 = ([50, 50], "nuc")
+    ST6GAL1 = ([88, 88], "mem")
+    LAMP1 = ([88, 88], "mem")
+    ACTB = ([88, 88], "mem")
+    DSP = ([88, 88], "mem")
+    FBL = ([50, 50], "nuc")
+    NPM1 = ([50, 50], "nuc")
+    TOMM20 = ([88, 88], "mem")
+    SLC25A17 = ([88, 88], "mem")
+    ACTN1 = ([88, 88], "mem")
+    GJA1 = ([88, 88], "mem")
+    H2B = ([50, 50], "nuc")
+    SON = ([50, 50], "nuc")
+    SEC61B = ([88, 88], "mem")
+    RAB5A = ([88, 88], "mem")
+    MYH10 = ([88, 88], "mem")
+    AAVS1 = ([88, 88], "mem")
+    CTNNB1 = ([88, 88], "mem")
+    ATP2A2 = ([88, 88], "mem")
+    SMC1A = ([50, 50], "nuc")
 
 
 class DatasetFields:
@@ -84,6 +120,8 @@ class MakeDiagnosticSheet(Step):
         current_pixel_sizes=(0.10833333333333332, 0.10833333333333332, 0.29,),
         desired_pixel_sizes=(0.29, 0.29, 0.29),
     ):
+        # Don't use dask for image reading
+        aicsimageio.use_dask(False)
 
         # Only do the image normalization for the first image
         # Every row is based on the same source image
@@ -139,6 +177,7 @@ class MakeDiagnosticSheet(Step):
         row: pd.Series,
         image: np.ndarray,
         projection_method: str,
+        projection_channels: str,
         cell_images_3d_dir: Path,
         cell_images_2d_all_proj_dir: Path,
         cell_images_2d_yx_proj_dir: Path,
@@ -147,8 +186,6 @@ class MakeDiagnosticSheet(Step):
         current_pixel_sizes=(0.10833333333333332, 0.10833333333333332, 0.29,),
         desired_pixel_sizes=(0.29, 0.29, 0.29),
     ) -> Union[CellImagesResult, CellImagesError]:
-        # Don't use dask for image reading
-        aicsimageio.use_dask(False)
 
         # Get the ultimate end save paths for this cell
 
@@ -219,27 +256,28 @@ class MakeDiagnosticSheet(Step):
             f"Beginning single cell image generation for : {cell_image_3d_save_path}"
         )
 
-        # Select the DNA, Membrane, and Structure channels
-        if original_structure:
-
+        # Choose either the segmentation channels or gfp
+        if projection_channels == "seg":
+            channel_subset = [
+                "nucleus_segmentation",
+                "membrane_segmentation",
+            ]
+        else:
             channel_subset = [
                 "dna",
                 "membrane",
-                "structure",
             ]
+
+        # Choose original gfp structure or generated gfp structure
+        if original_structure:
+            channel_subset.append("structure")
 
             image = image[[channels.index(target) for target in channel_subset]]
-
             combined_image = image
         else:
-            # I think the membrane and structure channel are flipped
-            channel_subset = [
-                "dna",
-                "membrane",
-                "generated_structure",
-            ]
+            channel_subset.append("generated_structure")
 
-            image = image[[channels.index(target) for target in ["dna", "membrane"]]]
+            image = image[[channels.index(target) for target in channel_subset[0:2]]]
 
             # Get generated image, it is already CZYX
             gen_image = AICSImage(row.GeneratedStructuePath_i)
@@ -251,12 +289,13 @@ class MakeDiagnosticSheet(Step):
             # Append dna and membrane source to generate structure
             combined_image = np.append(image, gen_image, axis=0)
 
+        # Store 3D image
         # Reduce size
         crop_3d = combined_image * 255
         crop_3d = crop_3d.astype(np.uint8)
 
         # Save to OME-TIFF
-        with OmeTiffWriter(cell_image_3d_save_path, overwrite_file=True) as writer:
+        with OmeTiffWriter(cell_image_3d_save_path, overwrite_file=False) as writer:
             writer.save(
                 crop_3d,
                 dimension_order="CZYX",
@@ -264,51 +303,77 @@ class MakeDiagnosticSheet(Step):
                 pixels_physical_size=desired_pixel_sizes,
             )
 
-        # Set RGB colors
-        # This will set:
-        # DNA to Blue
-        # Structure to Green
-        # Membrane to Red
+        # If segmentations were chosen
+        # Do max projecting the way Matheus does it
+        # (use appropriate z slice range for each structure)
+        if projection_channels == "seg":
+            zslice_range = getattr(ZSliceRanges, row.Gene)
+            thumbnail = []
+            for proj in range(3):
+                thumbnail.append(
+                    get_thumbnail(
+                        input_raw=combined_image[2],
+                        segs=combined_image[0:2],
+                        normalize="pct",
+                        proj=proj,
+                        # This is a range of z slices
+                        mode_raw=zslice_range[0],
+                        # This is either "nuc" or "memb" to
+                        # help determine the correct zslice
+                        reference=zslice_range[1],
+                        radii=(50, 50),
+                    )
+                )
+            fig, axs = plt.subplots(
+                2, 2, figsize=(6, 6), gridspec_kw={"hspace": 0.0, "wspace": 0.0}
+            )
+            axs[0, 1].imshow(thumbnail[2])
+            axs[0, 0].imshow(thumbnail[0])
+            axs[1, 0].imshow(thumbnail[1])
+            for ax in axs.flatten():
+                ax.axis("off")
+            fig.savefig(cell_image_2d_all_proj_save_path)
 
-        colors = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
+        # If gfp is chosen, just max project each gfp channel
+        else:
+            colors = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
+            # Get all axes projection image
+            all_proj = proc.imgtoprojection(
+                combined_image,
+                proj_all=True,
+                proj_method=projection_method,
+                local_adjust=False,
+                global_adjust=True,
+                colors=colors,
+            )
 
-        # Get all axes projection image
-        all_proj = proc.imgtoprojection(
-            combined_image,
-            proj_all=True,
-            proj_method=projection_method,
-            local_adjust=False,
-            global_adjust=True,
-            colors=colors,
-        )
+            # Convert to YXC for PNG writing
+            all_proj = transforms.transpose_to_dims(all_proj, "CYX", "YXC")
 
-        # Convert to YXC for PNG writing
-        all_proj = transforms.transpose_to_dims(all_proj, "CYX", "YXC")
+            # Drop size to uint8
+            all_proj = all_proj.astype(np.uint8)
 
-        # Drop size to uint8
-        all_proj = all_proj.astype(np.uint8)
+            # Save to PNG
+            imwrite(cell_image_2d_all_proj_save_path, all_proj)
 
-        # Save to PNG
-        imwrite(cell_image_2d_all_proj_save_path, all_proj)
+            # Get YX axes projection image
+            yx_proj = proc.imgtoprojection(
+                combined_image,
+                proj_all=False,
+                proj_method=projection_method,
+                local_adjust=False,
+                global_adjust=True,
+                colors=colors,
+            )
 
-        # Get YX axes projection image
-        yx_proj = proc.imgtoprojection(
-            combined_image,
-            proj_all=False,
-            proj_method=projection_method,
-            local_adjust=False,
-            global_adjust=True,
-            colors=colors,
-        )
+            # Convert to YXC for PNG writing
+            yx_proj = transforms.transpose_to_dims(yx_proj, "CYX", "YXC")
 
-        # Convert to YXC for PNG writing
-        yx_proj = transforms.transpose_to_dims(yx_proj, "CYX", "YXC")
+            # Drop size to uint8
+            yx_proj = yx_proj.astype(np.uint8)
 
-        # Drop size to uint8
-        yx_proj = yx_proj.astype(np.uint8)
-
-        # Save to PNG
-        imwrite(cell_image_2d_yx_proj_save_path, yx_proj)
+            # Save to PNG
+            imwrite(cell_image_2d_yx_proj_save_path, yx_proj)
 
         log.info(
             f"Completed single cell image generation for: {cell_image_3d_save_path}"
@@ -328,6 +393,7 @@ class MakeDiagnosticSheet(Step):
         dataset: pd.DataFrame,
         cell_images_2d_all_proj_dir: Union[str, Path],
         cell_images_2d_yx_proj_dir: Union[str, Path],
+        ncells: int,
     ):
 
         log.info("Beginning html report generation")
@@ -341,7 +407,7 @@ class MakeDiagnosticSheet(Step):
             htmlwriter = HTMLWriter(this_html_save_path)
 
             htmlwriter.heading(
-                f"These are 64 IC generated {structure_name}: "
+                f"These are {ncells - 1} IC generated {structure_name}: "
                 "Original structure is "
                 f"{dataset.head(1)['OriginalTaggedStructure'].item()}"
             )
@@ -359,7 +425,7 @@ class MakeDiagnosticSheet(Step):
                 if row.GeneratedStructureInstance_i == 0:
                     this_label = (
                         f"CellID_{row.CellId}_OriginalStructure_"
-                        + f"{row.OriginalTaggedStructure}_"
+                        + f"{row.OriginalTaggedStructure}"
                     )
                 else:
                     this_label = (
@@ -398,13 +464,14 @@ class MakeDiagnosticSheet(Step):
         cell_ceiling_adjustment: int = 7,
         bounding_box_percentile: float = 95.0,
         projection_method: str = "max",
+        projection_channels: str = "seg",
         distributed_executor_address: Optional[str] = None,
         batch_size: Optional[int] = None,
+        structs: Optional[List] = None,
+        ncells: Optional[int] = None,
         overwrite: bool = False,
         current_pixel_sizes=(0.10833333333333332, 0.10833333333333332, 0.29,),
         desired_pixel_sizes=(0.29, 0.29, 0.29),
-        structs=["Actin filaments", "Mitochondria"],
-        ncells=2,
         **kwargs,
     ):
         """
@@ -416,8 +483,8 @@ class MakeDiagnosticSheet(Step):
         dataset: Union[str, Path, pd.DataFrame, dd.DataFrame]
             The primary cell dataset to generate 3D single cell images for.
 
-            **Required dataset columns:** *["CellId", "StandardizedFOVPath",
-            "CellFeaturesPath"]*
+            Example dataset: /allen/aics/modeling/ritvik/projects/
+            cvapipe/local_staging/generategfpinstantiations_tmp/images_CellID_109017/manifest.csv
 
         cell_ceiling_adjustment: int
             The adjust to use for raising the cell shape ceiling. If <= 0, this will be
@@ -429,11 +496,6 @@ class MakeDiagnosticSheet(Step):
             provided percentile of all cell image sizes.
             Default: 95.0
 
-        bbox: tuple, list, dict
-            Hard coded ZYX dimensions to set the bounding box.
-            Note: This overrides the `bounding_box_percentile` parameter.
-            Example: (64, 168, 104)
-
         projection_method: str
             The method to use for generating the flat projection.
             Default: max
@@ -441,6 +503,12 @@ class MakeDiagnosticSheet(Step):
             More details:
             https://allencellmodeling.github.io/aicsimageprocessing/aicsimageprocessing.html#aicsimageprocessing.imgToProjection.imgtoprojection
 
+        projection_channels: str
+            The channels to max project. If "seg", then will make contours 
+            the dna and memb seg channels
+            along with the structure gfp. Else will max project gfp 
+            of dna, memb and struct
+        
         distributed_executor_address: Optional[str]
             An optional executor address to pass to some computation engine.
             Default: None
@@ -467,7 +535,7 @@ class MakeDiagnosticSheet(Step):
             dataset = pd.read_csv(dataset)
 
         # Select ncells for each group
-        g = (
+        dataset = (
             dataset.groupby(["GeneratedStructureName_i"])
             .apply(
                 lambda x: x.sort_values(
@@ -476,11 +544,13 @@ class MakeDiagnosticSheet(Step):
             )
             .reset_index(drop=True)
         )
-        # select top N rows within each continent
-        dataset = g.groupby("GeneratedStructureName_i").head(ncells)
 
-        # Select structures we care about
-        dataset = dataset.loc[dataset["GeneratedStructureName_i"].isin(structs)]
+        if ncells:
+            # select top N rows within each continent
+            dataset = dataset.groupby("GeneratedStructureName_i").head(ncells)
+        if structs:
+            # Select structures we care about
+            dataset = dataset.loc[dataset["GeneratedStructureName_i"].isin(structs)]
 
         # Create save directories'
         cell_images_3d_dir = self.step_local_staging_dir / "cell_images_3d"
@@ -548,6 +618,7 @@ class MakeDiagnosticSheet(Step):
                 # Pass the other parameters as list of the same thing for each
                 # mapped function call
                 [projection_method for i in range(len(dataset))],
+                [projection_channels for i in range(len(dataset))],
                 [cell_images_3d_dir for i in range(len(dataset))],
                 [cell_images_2d_all_proj_dir for i in range(len(dataset))],
                 [cell_images_2d_yx_proj_dir for i in range(len(dataset))],
@@ -590,7 +661,10 @@ class MakeDiagnosticSheet(Step):
         # Process each row
 
         html_dataframe = self._make_html_report(
-            self.manifest, cell_images_2d_all_proj_dir, cell_images_2d_yx_proj_dir,
+            self.manifest,
+            cell_images_2d_all_proj_dir,
+            cell_images_2d_yx_proj_dir,
+            ncells,
         )
 
         # Save manifest to CSV

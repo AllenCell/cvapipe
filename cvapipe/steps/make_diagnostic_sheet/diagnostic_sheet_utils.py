@@ -9,6 +9,8 @@ import numpy as np
 from scipy.signal import fftconvolve as convolve
 from aicsimageio import AICSImage, types
 from aicsimageio.writers import OmeTiffWriter
+from skimage import segmentation as skseg
+from skimage import io as skio
 
 ###############################################################################
 
@@ -268,6 +270,168 @@ def select_and_adjust_segmentation_ceiling(
         image[1, :, :, start:] = cell_shape
 
     return image
+
+
+def get_cell_center(segs, proj=0):
+    smin, smax = [], []
+    for seg in segs:
+        zyx = np.nonzero(seg)
+        smin.append(zyx[proj].min())
+        smax.append(zyx[proj].max())
+    smin = np.min(smin)
+    smax = np.max(smax)
+    return int(smin + 0.5 * (smax - smin))
+
+
+def get_slice_highest_intensity(raw, proj=0):
+    return raw.mean(axis=tuple([i for i in range(3) if i != proj])).argmax()
+
+
+def pct_normalization_and_8bit(raw, pct_range=[50, 99]):
+    msk = raw > 0
+    values = raw[msk]
+    if len(values):
+        pcts = np.percentile(values, pct_range)
+        if pcts[1] > pcts[0]:
+            values = np.clip(values, *pcts)
+            values = (values - pcts[0]) / (pcts[1] - pcts[0])
+            values = np.clip(values, 0, 1)
+            raw[msk] = 255 * values
+    return raw.astype(np.uint8)
+
+
+def minmax_normalization_and_8bit(raw):
+    rmin = raw.min()
+    rmax = raw.max()
+    if rmax > rmin:
+        raw = 255 * (raw - rmin) / (rmax - rmin)
+    return raw.astype(np.uint8)
+
+
+def get_bottom_and_top_slices(segs, proj, reference):
+    sinf, ssup = [], []
+    for seg in segs:
+        zyx = np.nonzero(seg)
+        sinf.append(zyx[proj].min())
+        ssup.append(zyx[proj].max())
+    inf_op = np.min if reference == "mem" else np.max
+    sup_op = np.max if reference == "mem" else np.min
+    sinf = inf_op(sinf)
+    ssup = sup_op(ssup)
+    return sinf, ssup
+
+
+def get_slice_range(segs, proj, zrange, reference):
+    sinf, ssup = get_bottom_and_top_slices(segs=segs, proj=proj, reference=reference)
+    smin = int(sinf + 0.01 * zrange[0] * (ssup - sinf))
+    smax = int(sinf + 0.01 * zrange[1] * (ssup - sinf))
+    if smin == smax:
+        smax += 1
+    return (smin, smax)
+
+
+def get_top(segs, proj, reference):
+    ssinf, ssup = get_bottom_and_top_slices(segs=segs, proj=proj, reference=reference)
+    return np.min([ssup + 2, segs[0].shape[proj] - 1])
+
+
+def get_thumbnail(
+    input_raw,
+    segs,
+    proj=0,
+    mode_raw=[80, 90],
+    reference="mem",
+    radii=(128, 128),
+    normalize=None,
+    save=None,
+):
+
+    raw = input_raw.copy()
+
+    # Get slice number for each type of projection
+    sc = get_cell_center(segs=segs, proj=proj)
+    si = get_slice_highest_intensity(raw=raw, proj=proj)
+    st = get_top(segs=segs, proj=proj, reference=reference)
+    if isinstance(mode_raw, list):
+        sr = get_slice_range(segs=segs, proj=proj, zrange=mode_raw, reference=reference)
+
+    # Project raw data
+    if mode_raw == "mip":
+        raw = raw[:, sc] if proj else raw.max(axis=proj)
+    if mode_raw == "cell_center":
+        raw = raw[:, sc] if proj else raw[sc]
+    if mode_raw == "high_intensity":
+        raw = raw[:, sc] if proj else raw[si]
+    if isinstance(mode_raw, list):
+        if proj == 0:
+            raw = raw[sr[0] : sr[1]].max(axis=0)
+        elif proj == 1:
+            raw = raw[:, sc]
+        elif proj == 2:
+            raw = raw[:, :, sc]
+    if mode_raw == "top":
+        raw = raw[:, sc] if proj else raw[st]
+
+    # Normalize raw data
+    if normalize is not None:
+        if normalize == "pct":
+            raw = pct_normalization_and_8bit(raw=raw)
+        if normalize == "minmax":
+            raw = minmax_normalization_and_8bit(raw=raw)
+    else:
+        raw = raw.astype(np.uint8)
+
+    # Project binary data and calculate contours
+    contour = np.zeros(raw.shape, dtype=np.uint8)
+    for seg in segs:
+        if mode_raw == "mip":
+            tmp = seg[:, sc] if proj else seg.max(axis=proj)
+        if mode_raw == "cell_center":
+            tmp = seg[:, sc] if proj else seg[sc]
+        if mode_raw == "high_intensity":
+            tmp = seg[:, sc] if proj else seg[si]
+        if isinstance(mode_raw, list):
+            if proj == 0:
+                tmp = seg[sr[0] : sr[1]].max(axis=0)
+            elif proj == 1:
+                tmp = seg[:, sc]
+            elif proj == 2:
+                tmp = seg[:, :, sc]
+        if mode_raw == "top":
+            tmp = seg[:, sc] if proj else seg[st]
+
+        contour += (255 * skseg.find_boundaries(tmp > 0)).astype(np.uint8)
+
+    # Crop image
+    rx = radii[0]
+    ry = radii[1]
+    contour = np.pad(contour, ((ry, ry), (rx, rx)))
+    raw = np.pad(raw, ((ry, ry), (rx, rx)))
+    y, x = np.nonzero(contour)
+
+    if len(x) > 0:
+        xm = int(x.mean())
+        ym = int(y.mean())
+        contour = contour[ym - ry : ym + ry, xm - rx : xm + rx]
+        raw = raw[ym - ry : ym + ry, xm - rx : xm + rx]
+        # Make RGB image
+        rgb_thumbnail = raw.copy().reshape(1, *raw.shape)
+        rgb_thumbnail = np.repeat(rgb_thumbnail, 3, axis=0)
+        # Use yellow for contours and grayscale for raw
+        for ch, value in enumerate([255, 255, 0]):
+            rgb_thumbnail[ch, contour > 0] = value
+        rgb_thumbnail = np.moveaxis(rgb_thumbnail, 0, -1)
+        # Not sure why this filp is needed
+        if proj:
+            rgb_thumbnail = rgb_thumbnail[::-1]
+        # Save
+        if save is not None:
+            skio.imsave(save, rgb_thumbnail)
+    else:
+        print(f"No contour found for {save}.")
+        return None
+
+    return rgb_thumbnail
 
 
 def crop_raw_channels_with_segmentation(

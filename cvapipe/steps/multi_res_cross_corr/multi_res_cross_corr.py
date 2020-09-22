@@ -53,7 +53,7 @@ class MultiResCrossCorr(Step):
         image_dims_crop_size=(64, 160, 96),
         input_csv_loc=Path(
             "/allen/aics/modeling/ritvik/projects/cvapipe/local_staging/"
-            "/generategfpinstantiations_tmp/images_CellID_987/manifest.csv"
+            "/generategfpinstantiations_tmp/images_CellID_109017/manifest.csv"
         ),
         distributed_executor_address: Optional[str] = None,
         batch_size: Optional[int] = None,
