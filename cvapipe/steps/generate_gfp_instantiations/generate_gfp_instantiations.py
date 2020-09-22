@@ -63,13 +63,22 @@ class GenerateGFPInstantiations(Step):
         ),
         STRUCTURES_TO_GEN=[
             "Desmosomes",
-            "Endoplasmic reticulum",
-            "Golgi",
             "Microtubules",
+            "Golgi",
+            "Nucleolus (Dense Fibrillar Component)",
+            "Matrix adhesions",
+            "Peroxisomes",
+            "Nucleolus (Granular Component)",
+            "Endosomes",
             "Mitochondria",
             "Nuclear envelope",
-            "Nucleolus (Dense Fibrillar Component)",
-            "Nucleolus (Granular Component)",
+            "Actomyosin bundles",
+            "Adherens junctions",
+            "Plasma membrane",
+            "Actin filaments",
+            "Tight junctions",
+            "Gap junctions",
+            "Lysosome",
         ],
         BATCH_SIZE=16,
         N_PAIRS_PER_STRUCTURE=64,
@@ -104,7 +113,45 @@ class GenerateGFPInstantiations(Step):
 
         # Get CellIds from input_csv (Caleb's csv by default)
         df_cellids = pd.read_csv(input_csv_loc)
+        df_cellids = df_cellids[
+            df_cellids["CellId"].isin([71157, 79371, 75732, 37512, 987])
+        ]
         all_cellids = list(df_cellids.CellId)
+
+        # all_cellids = [109017, 32852, 12658, 110436, 16144, 73166]
+
+        all_cellids = [
+            987,
+            9445,
+            11743,
+            12584,
+            12658,
+            14720,
+            16144,
+            16564,
+            18461,
+            21112,
+            22692,
+            23302,
+            31010,
+            32852,
+            43618,
+            47400,
+            47484,
+            48455,
+            59749,
+            72379,
+            73166,
+            75711,
+            85499,
+            92421,
+            96547,
+            106072,
+            109017,
+            110436,
+            112818,
+            114973,
+        ]
 
         # Get trained autoencoder, dataprovider
         u_class_names, u_classes, dp, ae = SetupTheAutoencoder(
@@ -174,65 +221,109 @@ class GenerateGFPInstantiations(Step):
 
                     pbar.set_description(f"Processing {structure}")
 
-                    df_tmp = cell_metadata[["CellId"]].copy()
-                    df_tmp["OriginalTaggedStructure"] = cell_metadata[
-                        "Structure"
-                    ].item()
-
-                    for ij in corr_pair_inds:
-                        df_tmp[f"GeneratedStructureName_{ij}"] = structure
-                        df_tmp[f"GeneratedStructureInstance_{ij}"] = -1
-                        df_tmp[f"GeneratedStructuePath_{ij}"] = ""
-                    df_tmp = pd.concat([df_tmp] * N_PAIRS_PER_STRUCTURE).reset_index(
-                        drop=True
+                    # grab metadata
+                    cell_metadata = dp.csv_data[dp.csv_data.CellId == MY_CELL_ID].drop(
+                        columns=["level_0", "Unnamed: 0", "index"]
                     )
 
-                    for batch in chunks(range(N_PAIRS_PER_STRUCTURE), BATCH_SIZE):
+                    # search for which split this id is in
+                    splits = {
+                        k for k, v in dp.data.items() if MY_CELL_ID in v["CellId"]
+                    }
+                    assert len(splits) == 1
+                    split = splits.pop()
 
-                        # one hot structure labels to generate,same for whole batch
-                        labels_gen_batch = (
-                            utils.index_to_onehot(struct_ind, len(u_classes))
-                            .repeat(len(batch), 1)
-                            .cuda()
+                    # find the index in the split
+                    index_in_split = np.where(dp.data[split]["CellId"] == MY_CELL_ID)[0]
+                    assert len(index_in_split) == 1
+                    index_in_split = index_in_split[0]
+
+                    # grab the sampled image
+                    gfp_img, struct_ind, ref_img = dp.get_sample(
+                        train_or_test=split, inds=[index_in_split]
+                    )
+
+                    # move ref image to gpu
+                    ref = ref_img.cuda()
+
+                    for structure, struct_ind in zip(
+                        STRUCTURES_TO_GEN, structure_to_gen_ids
+                    ):
+
+                        pbar.set_description(
+                            f"Processing {structure} in CellID {MY_CELL_ID}"
                         )
 
-                        # repeat reference structure over batch
-                        ref_batch = ref.repeat([len(batch), 1, 1, 1, 1])
+                        df_tmp = cell_metadata[["CellId"]].copy()
+                        df_tmp["OriginalTaggedStructure"] = cell_metadata[
+                            "Structure"
+                        ].item()
 
-                        # we want two images per row, image i and image j,
-                        #  so no hidden corr in aggreagate metrics
                         for ij in corr_pair_inds:
+                            df_tmp[f"GeneratedStructureName_{ij}"] = structure
+                            df_tmp[f"GeneratedStructureInstance_{ij}"] = -1
+                            df_tmp[f"GeneratedStructuePath_{ij}"] = ""
+                        df_tmp = pd.concat(
+                            [df_tmp] * N_PAIRS_PER_STRUCTURE
+                        ).reset_index(drop=True)
 
-                            # generate our gfp samples
-                            target_gen_batch, _ = ae(
-                                target=None, ref=ref_batch, labels=labels_gen_batch
+                        for batch in chunks(range(N_PAIRS_PER_STRUCTURE), BATCH_SIZE):
+
+                            # one hot structure labels to generate,same for whole batch
+                            labels_gen_batch = (
+                                utils.index_to_onehot(struct_ind, len(u_classes))
+                                .repeat(len(batch), 1)
+                                .cuda()
                             )
 
-                            # save images
-                            for b, im_tensor in zip(batch, target_gen_batch):
-                                struct_safe_name = structure.replace(" ", "_").lower()
-                                img_path = (
-                                    image_dir / f"generated_gfp_image_struct_"
-                                    f"{struct_safe_name}_instance_{b}_{ij}.ome.tiff"
+                            # repeat reference structure over batch
+                            ref_batch = ref.repeat([len(batch), 1, 1, 1, 1])
+
+                            # we want two images per row, image i and image j,
+                            #  so no hidden corr in aggreagate metrics
+                            for ij in corr_pair_inds:
+
+                                # generate our gfp samples
+                                target_gen_batch, _ = ae(
+                                    target=None, ref=ref_batch, labels=labels_gen_batch
                                 )
-                                im_write(im_tensor, img_path)
 
-                                df_tmp.at[b, f"GeneratedStructureInstance_{ij}"] = b
-                                df_tmp.at[b, f"GeneratedStructuePath_{ij}"] = img_path
+                                # save images
+                                for b, im_tensor in zip(batch, target_gen_batch):
+                                    struct_safe_name = structure.replace(
+                                        " ", "_"
+                                    ).lower()
+                                    img_path = (
+                                        image_dir / f"generated_gfp_image_struct_"
+                                        f"{struct_safe_name}_instance_{b}_{ij}.ome.tiff"
+                                    )
+                                    im_write(im_tensor, img_path)
 
-                                pbar.update(1)
+                                    df_tmp.at[b, f"GeneratedStructureInstance_{ij}"] = b
+                                    df_tmp.at[
+                                        b, f"GeneratedStructuePath_{ij}"
+                                    ] = img_path
 
-                    df = df.append(df_tmp)
+                                    pbar.update(1)
 
-                # merge df with metadata for cell
-                df = df.reset_index(drop=True)
-                df_out = cell_metadata.merge(df)
-                df_all_cellids = df_all_cellids.append(df_out)
+                        df = df.append(df_tmp)
+
+                    # merge df with metadata for cell
+                    df = df.reset_index(drop=True)
+                    df_out = cell_metadata.merge(df)
+                    this_manifest_save_path = image_dir / "manifest.csv"
+                    df_out.to_csv(this_manifest_save_path)
+                    df_all_cellids = df_all_cellids.append(df_out)
+
+                except:
+                    pass
 
         # save df
         self.manifest = df_all_cellids
         # save out manifest
-        manifest_save_path = self.step_local_staging_dir / "manifest.csv"
+        manifest_save_path = Path(
+            str(self.step_local_staging_dir) + "_tmp/" + "manifest.csv"
+        )
         self.manifest.to_csv(manifest_save_path)
 
         return manifest_save_path
