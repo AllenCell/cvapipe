@@ -314,6 +314,8 @@ def get_bottom_and_top_slices(segs, proj, reference):
         zyx = np.nonzero(seg)
         sinf.append(zyx[proj].min())
         ssup.append(zyx[proj].max())
+    # min for nucleus because it is inside the membrane
+    # max for membrane because it is outside the membrane
     inf_op = np.min if reference == "mem" else np.max
     sup_op = np.max if reference == "mem" else np.min
     sinf = inf_op(sinf)

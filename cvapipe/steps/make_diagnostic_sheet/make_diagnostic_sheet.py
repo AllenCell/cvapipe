@@ -307,6 +307,9 @@ class MakeDiagnosticSheet(Step):
         # Do max projecting the way Matheus does it
         # (use appropriate z slice range for each structure)
         if projection_channels == "seg":
+
+            log.info(f"Generating thumbnail contours for: {cell_image_3d_save_path}")
+
             zslice_range = getattr(ZSliceRanges, row.Gene)
             thumbnail = []
             for proj in range(3):
