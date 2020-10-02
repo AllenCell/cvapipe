@@ -197,8 +197,9 @@ class MitoClass(Step):
                 df_analysis.at[table_index, "this_cell_nbr_complete"] = 0  # 0 = False
                 df_analysis.at[table_index, "this_cell_nbr_dist_3d"] = nbr_dist_3d_new
                 df_analysis.at[table_index, "this_cell_nbr_dist_2d"] = nbr_dist_2d_new
-                df_analysis.at[table_index, "this_cell_nbr_overlap_area"] = \
-                    nbr_overlap_new
+                df_analysis.at[
+                    table_index, "this_cell_nbr_overlap_area"
+                ] = nbr_overlap_new
 
         self.manifest = df_analysis
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"

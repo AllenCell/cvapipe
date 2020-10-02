@@ -269,13 +269,17 @@ def single_cell_gen_one_fov(
         nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
         mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
 
-        assert mem_seg_whole.shape[0] == raw_mem0.shape[0] and \
-            mem_seg_whole.shape[1] == raw_mem0.shape[1] and \
-            mem_seg_whole.shape[2] == raw_mem0.shape[2], "raw and seg dim mismatch"
+        assert (
+            mem_seg_whole.shape[0] == raw_mem0.shape[0]
+            and mem_seg_whole.shape[1] == raw_mem0.shape[1]
+            and mem_seg_whole.shape[2] == raw_mem0.shape[2]
+        ), "raw and seg dim mismatch"
 
-        assert (not np.any(raw_mem0 < 1)) and \
-            (not np.any(raw_nuc0 < 1)) and \
-            (not np.any(raw_struct0 < 1)), "one z frame is blank, ignore this FOV"
+        assert (
+            (not np.any(raw_mem0 < 1))
+            and (not np.any(raw_nuc0 < 1))
+            and (not np.any(raw_struct0 < 1))
+        ), "one z frame is blank, ignore this FOV"
 
         # get structure segmentation
         struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
