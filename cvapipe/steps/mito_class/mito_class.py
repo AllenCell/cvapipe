@@ -163,6 +163,43 @@ class MitoClass(Step):
         # add final annotation (outliers have been removed) back
         df_analysis = pd.merge(df_cells, final_annotation, on="CellId", how="right")
 
+        # check cell neighbor distance and remove the cells have been removed:
+        current_cells = list(df_analysis.CellId.unique())
+        for row in df_analysis.itertuples():
+            table_index = row.Index
+            if row.this_cell_nbr_dist_3d is None or len(row.this_cell_nbr_dist_3d) == 0:
+                continue
+
+            update_flag = False
+            nbr_dist_3d_old = eval(row.this_cell_nbr_dist_3d)
+            nbr_dist_3d_new = []
+            nbr_dist_2d_old = eval(row.this_cell_nbr_dist_2d)
+            nbr_dist_2d_new = []
+            nbr_overlap_old = eval(row.this_cell_nbr_overlap_area)
+            nbr_overlap_new = []
+
+            for (neigh_id, neigh_dist) in nbr_dist_3d_old:
+                if neigh_id in current_cells:
+                    nbr_dist_3d_new.append((neigh_id, neigh_dist))
+                else:
+                    update_flag = True
+
+            # if no update, then no need to loop others
+            if update_flag:
+                for (neigh_id, neigh_dist) in nbr_dist_2d_old:
+                    if neigh_id in current_cells:
+                        nbr_dist_2d_new.append((neigh_id, neigh_dist))
+
+                for (neigh_id, neigh_overlap) in nbr_overlap_old:
+                    if neigh_id in current_cells:
+                        nbr_overlap_new.append((neigh_id, neigh_overlap))
+
+                df_analysis.at[table_index, "this_cell_nbr_complete"] = 0  # 0 = False
+                df_analysis.at[table_index, "this_cell_nbr_dist_3d"] = nbr_dist_3d_new
+                df_analysis.at[table_index, "this_cell_nbr_dist_2d"] = nbr_dist_2d_new
+                df_analysis.at[table_index, "this_cell_nbr_overlap_area"] = \
+                    nbr_overlap_new
+
         self.manifest = df_analysis
         manifest_save_path = self.step_local_staging_dir / "manifest.csv"
         df_analysis.to_csv(manifest_save_path, index=False)
