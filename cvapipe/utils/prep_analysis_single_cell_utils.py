@@ -269,11 +269,26 @@ def single_cell_gen_one_fov(
         nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
         mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
 
+        assert (
+            mem_seg_whole.shape[0] == raw_mem0.shape[0]
+            and mem_seg_whole.shape[1] == raw_mem0.shape[1]
+            and mem_seg_whole.shape[2] == raw_mem0.shape[2]
+        ), "raw and seg dim mismatch"
+
+        assert (
+            (not np.any(raw_mem0 < 1))
+            and (not np.any(raw_nuc0 < 1))
+            and (not np.any(raw_struct0 < 1))
+        ), "one z frame is blank, ignore this FOV"
+
         # get structure segmentation
         struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
         print(f"Segmentation load successfully: {row.FOVId}")
     except (Exception, AssertionError) as e:
         return [row.FOVId, True, e]
+
+    # make a copy to be used for calculating true edge cell labels
+    mem_seg_whole_copy = mem_seg_whole.copy()
 
     #########################################
     # run single cell qc in this fov
@@ -420,7 +435,7 @@ def single_cell_gen_one_fov(
             edge_fov_flag = True
 
     if edge_fov_flag:
-        true_edge_cells = find_true_edge_cells(mem_seg_whole_valid)
+        true_edge_cells = find_true_edge_cells(mem_seg_whole_copy)
 
     #################################################################
     # calculate a dictionary to store FOV info

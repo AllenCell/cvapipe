@@ -61,6 +61,11 @@ class Args(argparse.Namespace):
             help="Path to save the dataset to.",
         )
         p.add_argument(
+            "--bad_fov",
+            type=Path,
+            help="Path to a dataset with FOVs to be removed",
+        )
+        p.add_argument(
             "--debug",
             action="store_true",
             help="Show traceback if the script were to fail.",
@@ -115,6 +120,12 @@ def create_aics_dataset(args: Args):
         data[DatasetFields.SourceReadPath] = data[
             DatasetFields.AlignedImageReadPath
         ].combine_first(data[DatasetFields.SourceReadPath])
+
+        # remove a list of bad FOVs (from manual curation)
+        if args.bad_fov is not None:
+            df_bad_fov = pd.read_csv(args.bad_fov)
+            remove_list = list(df_bad_fov.FOVId.unique())
+            data = data[~data['FOVId'].isin(remove_list)]
 
         # Sample the data
         if args.sample != 1.0:
