@@ -48,7 +48,7 @@ def find_closest_cells(
 
 def scan_pc_for_cells(
     df,
-    pc=1,
+    pc="DNA_MEM_PC1",
     path=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
     dist_cols=[
         "DNA_MEM_PC1",
@@ -72,7 +72,7 @@ def scan_pc_for_cells(
 
     for p in path:
         point = np.zeros(len(dist_cols))
-        point[pc - 1] = p
+        point[dist_cols.index(pc)] = p
 
         df_point = find_closest_cells(
             df,
