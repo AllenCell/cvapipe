@@ -31,8 +31,8 @@ class PcaPathCells(Step):
     def run(
         self,
         pca_csv_loc=Path(
-            "/allen/aics/assay-dev/MicroscopyOtherData/Viana/forCaleb/"
-            "variance/05202020_Align-IND_Chirality-OFF/manifest.csv"
+            "/allen/aics/assay-dev/MicroscopyOtherData/Viana/projects/"
+            "cell_shape_variation/local_staging/expand/manifest.csv"
         ),
         pcs=[
             "DNA_MEM_PC1",
