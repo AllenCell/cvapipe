@@ -27,7 +27,7 @@ from datastep import Step, log_run_params
 from .gen_gfp_utils import (
     im_write,
     chunks,
-    SetupTheAutoencoder,
+    setup_the_autoencoder,
 )
 
 ###############################################################################
@@ -48,20 +48,20 @@ class GenerateGFPInstantiations(Step):
     @log_run_params
     def run(
         self,
-        GPUId=4,
-        REF_MODEL_KWARGS=dict(
+        gpu_id=0,
+        ref_model_kwargs=dict(
             model_dir="/allen/aics/modeling/gregj/results/integrated_cell"
             + "/test_cbvae_3D_avg_inten/2019-11-27-22:27:04",
             parent_dir="/allen/aics/modeling/gregj/results/integrated_cell/",
             suffix="_94544",
         ),
-        TARG_MODEL_KWARGS=dict(
+        targ_model_kwargs=dict(
             parent_dir="/allen/aics/modeling/gregj/results/integrated_cell/",
             model_dir="/allen/aics/modeling/gregj/results/integrated_cell"
             + "/test_cbvae_3D_avg_inten/2019-10-22-15:24:09/",
             suffix="_93300",
         ),
-        STRUCTURES_TO_GEN=[
+        structures_to_gen=[
             "Desmosomes",
             "Microtubules",
             "Golgi",
@@ -80,10 +80,10 @@ class GenerateGFPInstantiations(Step):
             "Gap junctions",
             "Lysosome",
         ],
-        BATCH_SIZE=16,
-        N_PAIRS_PER_STRUCTURE=64,
-        input_csv_loc="/allen/aics/modeling/caleb"
-        + "/dfNearestDistances_CloserThanK_Euclidean_NumDims_32_K_16.csv",
+        batch_size=16,
+        n_pairs_per_structure=64,
+        CellId: Optional[int] = None,
+        input_csv_loc: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -100,6 +100,7 @@ class GenerateGFPInstantiations(Step):
         BATCH_SIZE: int
         N_PAIRS_PER_STRUCTURE: int
             Number of structure pairs to generate to get CI estimates
+        CellId: int
         input_csv_loc: pathlib.Path
             Path to input csv containing list of CellIds
             Default: "/allen/aics/modeling/caleb"
@@ -112,59 +113,25 @@ class GenerateGFPInstantiations(Step):
         """
 
         # Get CellIds from input_csv (Caleb's csv by default)
-        df_cellids = pd.read_csv(input_csv_loc)
-        df_cellids = df_cellids[
-            df_cellids["CellId"].isin([71157, 79371, 75732, 37512, 987])
-        ]
-        all_cellids = list(df_cellids.CellId)
+        if input_csv_loc:
+            df = pd.read_csv(input_csv_loc)
+            all_cellids = df["CellId"]
 
-        # all_cellids = [109017, 32852, 12658, 110436, 16144, 73166]
-
-        all_cellids = [
-            987,
-            9445,
-            11743,
-            12584,
-            12658,
-            14720,
-            16144,
-            16564,
-            18461,
-            21112,
-            22692,
-            23302,
-            31010,
-            32852,
-            43618,
-            47400,
-            47484,
-            48455,
-            59749,
-            72379,
-            73166,
-            75711,
-            85499,
-            92421,
-            96547,
-            106072,
-            109017,
-            110436,
-            112818,
-            114973,
-        ]
+        if CellId:
+            all_cellids = [CellId]
 
         # Get trained autoencoder, dataprovider
-        u_class_names, u_classes, dp, ae = SetupTheAutoencoder(
-            GPUId, REF_MODEL_KWARGS, TARG_MODEL_KWARGS
+        u_class_names, u_classes, dp, ae = setup_the_autoencoder(
+            gpu_id, ref_model_kwargs, targ_model_kwargs
         )
 
         # Generate all structures that the model is trained on
-        if not STRUCTURES_TO_GEN or STRUCTURES_TO_GEN == "All":
-            STRUCTURES_TO_GEN = list(u_class_names)
+        if not structures_to_gen or structures_to_gen == "All":
+            structures_to_gen = list(u_class_names)
 
         structure_to_gen_ids = [
             np.where(u_class_names == structure)[0].item()
-            for structure in STRUCTURES_TO_GEN
+            for structure in structures_to_gen
         ]
         structure_to_gen_ids = [torch.tensor([x]) for x in structure_to_gen_ids]
 
@@ -176,34 +143,31 @@ class GenerateGFPInstantiations(Step):
         # Loop over all CellIds
         with tqdm(
             total=len(all_cellids)
-            * N_PAIRS_PER_STRUCTURE
-            * len(STRUCTURES_TO_GEN * len(corr_pair_inds))
+            * n_pairs_per_structure
+            * len(structures_to_gen * len(corr_pair_inds))
         ) as pbar:
-            for ThisCellId in all_cellids:
+            for this_cell_id in all_cellids:
 
                 # Make empty dataframes
                 df = pd.DataFrame()
 
-                # pick this based on pca location or whatever
-                MY_CELL_ID = ThisCellId
-
                 # Save generated images to images folder
-                image_path = "images" + "_CellID_" + str(MY_CELL_ID)
+                image_path = "images" + "_CellID_" + str(this_cell_id)
                 image_dir = self.step_local_staging_dir / image_path
                 image_dir.mkdir(parents=True, exist_ok=True)
 
                 # grab metadata
-                cell_metadata = dp.csv_data[dp.csv_data.CellId == MY_CELL_ID].drop(
+                cell_metadata = dp.csv_data[dp.csv_data.CellId == this_cell_id].drop(
                     columns=["level_0", "Unnamed: 0", "index"]
                 )
 
                 # search for which split this id is in
-                splits = {k for k, v in dp.data.items() if MY_CELL_ID in v["CellId"]}
+                splits = {k for k, v in dp.data.items() if this_cell_id in v["CellId"]}
                 assert len(splits) == 1
                 split = splits.pop()
 
                 # find the index in the split
-                index_in_split = np.where(dp.data[split]["CellId"] == MY_CELL_ID)[0]
+                index_in_split = np.where(dp.data[split]["CellId"] == this_cell_id)[0]
                 assert len(index_in_split) == 1
                 index_in_split = index_in_split[0]
 
@@ -216,25 +180,27 @@ class GenerateGFPInstantiations(Step):
                 ref = ref_img.cuda()
 
                 for structure, struct_ind in zip(
-                    STRUCTURES_TO_GEN, structure_to_gen_ids
+                    structures_to_gen, structure_to_gen_ids
                 ):
 
                     pbar.set_description(f"Processing {structure}")
 
                     # grab metadata
-                    cell_metadata = dp.csv_data[dp.csv_data.CellId == MY_CELL_ID].drop(
-                        columns=["level_0", "Unnamed: 0", "index"]
-                    )
+                    cell_metadata = dp.csv_data[
+                        dp.csv_data.CellId == this_cell_id
+                    ].drop(columns=["level_0", "Unnamed: 0", "index"])
 
                     # search for which split this id is in
                     splits = {
-                        k for k, v in dp.data.items() if MY_CELL_ID in v["CellId"]
+                        k for k, v in dp.data.items() if this_cell_id in v["CellId"]
                     }
                     assert len(splits) == 1
                     split = splits.pop()
 
                     # find the index in the split
-                    index_in_split = np.where(dp.data[split]["CellId"] == MY_CELL_ID)[0]
+                    index_in_split = np.where(dp.data[split]["CellId"] == this_cell_id)[
+                        0
+                    ]
                     assert len(index_in_split) == 1
                     index_in_split = index_in_split[0]
 
@@ -247,11 +213,11 @@ class GenerateGFPInstantiations(Step):
                     ref = ref_img.cuda()
 
                     for structure, struct_ind in zip(
-                        STRUCTURES_TO_GEN, structure_to_gen_ids
+                        structures_to_gen, structure_to_gen_ids
                     ):
 
                         pbar.set_description(
-                            f"Processing {structure} in CellID {MY_CELL_ID}"
+                            f"Processing {structure} in CellID {this_cell_id}"
                         )
 
                         df_tmp = cell_metadata[["CellId"]].copy()
@@ -264,10 +230,10 @@ class GenerateGFPInstantiations(Step):
                             df_tmp[f"GeneratedStructureInstance_{ij}"] = -1
                             df_tmp[f"GeneratedStructuePath_{ij}"] = ""
                         df_tmp = pd.concat(
-                            [df_tmp] * N_PAIRS_PER_STRUCTURE
+                            [df_tmp] * n_pairs_per_structure
                         ).reset_index(drop=True)
 
-                        for batch in chunks(range(N_PAIRS_PER_STRUCTURE), BATCH_SIZE):
+                        for batch in chunks(range(n_pairs_per_structure), batch_size):
 
                             # one hot structure labels to generate,same for whole batch
                             labels_gen_batch = (
@@ -313,17 +279,12 @@ class GenerateGFPInstantiations(Step):
                     df_out = cell_metadata.merge(df)
                     this_manifest_save_path = image_dir / "manifest.csv"
                     df_out.to_csv(this_manifest_save_path)
+
                     df_all_cellids = df_all_cellids.append(df_out)
 
-                except:
-                    pass
-
-        # save df
-        self.manifest = df_all_cellids
+        df_all_cellids.reset_index(inplace=True)
         # save out manifest
-        manifest_save_path = Path(
-            str(self.step_local_staging_dir) + "_tmp/" + "manifest.csv"
-        )
-        self.manifest.to_csv(manifest_save_path)
+        manifest_save_path = self.step_local_staging_dir / "manifest.csv"
+        df_all_cellids.to_csv(manifest_save_path)
 
         return manifest_save_path

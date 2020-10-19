@@ -4,7 +4,6 @@ from .validate_dataset import ValidateDataset
 from .prep_analysis_single_cell_ds import PrepAnalysisSingleCellDs
 from .pca_path_cells import PcaPathCells
 from .multi_res_struct_compare import MultiResStructCompare
-from .multi_res_cross_corr import MultiResCrossCorr
 from .generate_gfp_instantiations import GenerateGFPInstantiations
 from .make_diagnostic_sheet import MakeDiagnosticSheet
 
@@ -14,6 +13,5 @@ __all__ = [
     "PcaPathCells",
     "GenerateGFPInstantiations",
     "MultiResStructCompare",
-    "MultiResCrossCorr",
     "MakeDiagnosticSheet",
 ]

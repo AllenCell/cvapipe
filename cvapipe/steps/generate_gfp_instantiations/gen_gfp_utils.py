@@ -21,7 +21,16 @@ log = logging.getLogger(__name__)
 ###############################################################################
 
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+
 def im_write(im, path):
+    """
+    Takes CZYX torch tensor and writes ome.tiff to path
+    """
 
     im = im.cpu().detach().numpy().transpose(3, 0, 1, 2)
 
@@ -31,16 +40,15 @@ def im_write(im, path):
         writer.save(im)
 
 
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
-
-
-def SetupTheAutoencoder(GPUID, REF_MODEL_KWARGS=None, TARG_MODEL_KWARGS=None):
+def setup_the_autoencoder(gpu_id, ref_model_kwargs=None, targ_model_kwargs=None):
+    """
+    Load Greg's 3D trained model
+    and return the autoencoder (train set to False),
+    the dataprovider, and the classes and class names
+    """
 
     # Prep GPUs
-    gpu_ids = [4]
+    gpu_ids = [gpu_id]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(ID) for ID in gpu_ids])
     if len(gpu_ids) == 1:
         torch.backends.cudnn.enabled = True
@@ -51,16 +59,16 @@ def SetupTheAutoencoder(GPUID, REF_MODEL_KWARGS=None, TARG_MODEL_KWARGS=None):
     # Load models
     log.info("Beginning model load")
 
-    if not REF_MODEL_KWARGS:
-        REF_MODEL_KWARGS = dict(
+    if not ref_model_kwargs:
+        ref_model_kwargs = dict(
             model_dir="/allen/aics/modeling/gregj/results/integrated_cell"
             + "/test_cbvae_3D_avg_inten/2019-11-27-22:27:04",
             parent_dir="/allen/aics/modeling/gregj/results/integrated_cell/",
             suffix="_94544",
         )
 
-    if not TARG_MODEL_KWARGS:
-        TARG_MODEL_KWARGS = dict(
+    if not targ_model_kwargs:
+        targ_model_kwargs = dict(
             parent_dir="/allen/aics/modeling/gregj/results/integrated_cell/",
             model_dir="/allen/aics/modeling/gregj/results/integrated_cell"
             + "/test_cbvae_3D_avg_inten/2019-10-22-15:24:09/",
@@ -68,18 +76,18 @@ def SetupTheAutoencoder(GPUID, REF_MODEL_KWARGS=None, TARG_MODEL_KWARGS=None):
         )
 
     networks_ref, dp_ref, args_ref = utils.load_network_from_dir(
-        REF_MODEL_KWARGS["model_dir"],
-        REF_MODEL_KWARGS["parent_dir"],
-        suffix=REF_MODEL_KWARGS["suffix"],
+        ref_model_kwargs["model_dir"],
+        ref_model_kwargs["parent_dir"],
+        suffix=ref_model_kwargs["suffix"],
     )
 
     ref_enc = networks_ref["enc"]
     ref_dec = networks_ref["dec"]
 
     networks_targ, dp_target, args_target = utils.load_network_from_dir(
-        TARG_MODEL_KWARGS["model_dir"],
-        TARG_MODEL_KWARGS["parent_dir"],
-        suffix=TARG_MODEL_KWARGS["suffix"],
+        targ_model_kwargs["model_dir"],
+        targ_model_kwargs["parent_dir"],
+        suffix=targ_model_kwargs["suffix"],
     )
 
     target_enc = networks_targ["enc"]
