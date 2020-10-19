@@ -67,31 +67,31 @@ class StructureGenes:
     CELL_NUC = "CELL+NUCLEUS"
 
 
-channel_index_names = [
-    "Centrioles",
-    "Microtubules",
-    "Matrix adhesions",
-    "Tight junctions",
-    "Nuclear envelope",
-    "Nuclear pores",
-    "Golgi",
-    "Lysosome",
-    "Filamentous actin",
-    "Desmosomes",
-    "Nucleolus (Dense Fibrillar Component)",
-    "Nucleolus (Granular Component)",
-    "Mitochondria",
-    "Peroxisomes",
-    "Actin filaments",
-    "Gap junctions",
-    "Histone",
-    "Nuclear Speckles",
-    "Endoplasmic Reticulum",
-    "Endosomes",
-    "Actomyosin bundles",
-    "Plasma membrane",
-    "Adherens junctions",
-    "Sarcoplasmic reticulum",
-    "Cohesin",
-    "CELL+NUCLEUS",
-]
+class StructureGeneFullNames:
+    # This is the order that data is stored in the 5d stack
+    CENT2 = "Centrioles"
+    TUBA1B = "Microtubules"
+    PXN = "Matrix adhesions"
+    TJP1 = "Tight junctions"
+    LMNB1 = "Nuclear envelope"
+    NUP153 = "Nuclear pores"
+    Golgi = "Golgi"
+    LAMP1 = "Lysosome"
+    ACTB = "Filamentous actin"
+    DSP = "Desmosomes"
+    FBL = "Nucleolus (Dense Fibrillar Component)"
+    NPM1 = "Nucleolus (Granular Component)"
+    TOMM20 = "Mitochondria"
+    PMP34 = "PMP34"
+    ACTN1 = "Peroxisomes"
+    GJA1 = "Gap junctions"
+    H2B = "Histone"
+    SON = "Nuclear Speckles"
+    SEC61B = "Endoplasmic Reticulum"
+    RAB5A = "Endosomes"
+    MYH10 = "Actomyosin bundles"
+    AAVS1 = "Plasma membrane"
+    CTNNB1 = "Adherens junctions"
+    ATP2A2 = "Sarcoplasmic reticulum"
+    SMC1A = "Cohesin"
+    CELL_NUC = "CELL+NUCLEUS"
