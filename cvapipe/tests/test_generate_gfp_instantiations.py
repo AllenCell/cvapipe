@@ -16,7 +16,7 @@ def test_run(data_dir):
         structures_to_gen=["Desmosomes", "Microtubules"],
         batch_size=16,
         n_pairs_per_structure=2,
-        CellId=86655,
+        CellId=9445,
     )
 
     manifest = pd.read_csv(output)

@@ -338,41 +338,47 @@ def compute_distance_metric(
         img_j[mask == 0] = 0
         mask_i = mask_j = mask
 
-    # multi-res comparison
-    pyr_corrs = pyramid_correlation(
-        img_i, img_j, mask1=mask_i, mask2=mask_j, func=np.mean
-    )
-
-    if permuted:
-        # comparison when one input is permuted (as baseline correlation)
-        pyr_corrs_permuted = pyramid_correlation(
-            img_i, img_j, mask1=mask_i, mask2=mask_j, permute=True, func=np.mean
+    try:
+        # multi-res comparison
+        pyr_corrs = pyramid_correlation(
+            img_i, img_j, mask1=mask_i, mask2=mask_j, func=np.mean
         )
 
-    for k, v in sorted(pyr_corrs.items()):
         if permuted:
-            tmp_stat_dict = {
-                "Resolution (micrometers)": px_size * k,
-                "Pearson Correlation": v,
-                "Pearson Correlation permuted": pyr_corrs_permuted[k],
-            }
-        else:
-            tmp_stat_dict = {
-                "Resolution (micrometers)": px_size * k,
-                "Pearson Correlation": v,
-            }
+            # comparison when one input is permuted (as baseline correlation)
+            pyr_corrs_permuted = pyramid_correlation(
+                img_i, img_j, mask1=mask_i, mask2=mask_j, permute=True, func=np.mean
+            )
 
-        df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
+        for k, v in sorted(pyr_corrs.items()):
+            if permuted:
+                tmp_stat_dict = {
+                    "Resolution (micrometers)": px_size * k,
+                    "Pearson Correlation": v,
+                    "Pearson Correlation permuted": pyr_corrs_permuted[k],
+                }
+            else:
+                tmp_stat_dict = {
+                    "Resolution (micrometers)": px_size * k,
+                    "Pearson Correlation": v,
+                }
 
-    # label stats with StructureName1
-    df_tmp_corrs[DatasetFields.StructureName1] = row[DatasetFields.StructureName1]
+            df_tmp_corrs = df_tmp_corrs.append(tmp_stat_dict, ignore_index=True)
 
-    log.info(f"{df_tmp_corrs}")
-    # and append row metadata
-    df_row_tmp = row.to_frame().T
-    df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
+        # label stats with StructureName1
+        df_tmp_corrs[DatasetFields.StructureName1] = row[DatasetFields.StructureName1]
 
-    return df_row_tmp
+        # and append row metadata
+        df_row_tmp = row.to_frame().T
+        df_row_tmp = df_row_tmp.merge(df_tmp_corrs)
+
+        return df_row_tmp
+
+    # Catch ValueError when some of the flattened images have infinity or NaNs
+    # This generally throws a ValueError: array must not contain infs or NaNs
+    # in the pearson r calculation
+    except ValueError:
+        return None
 
 
 def clean_up_results(dist_metric_results, permuted):

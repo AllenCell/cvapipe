@@ -16,6 +16,7 @@ import sys
 # Insert path to an IC module
 sys.path.insert(1, "/allen/aics/modeling/ritvik/projects/pytorch_integrated_cell/")
 
+
 from integrated_cell import utils
 
 # from aics_dask_utils import DistributedHandler
@@ -172,7 +173,7 @@ class GenerateGFPInstantiations(Step):
                 index_in_split = index_in_split[0]
 
                 # grab the sampled image
-                gfp_img, struct_ind, ref_img = dp.get_sample(
+                _, struct_ind, ref_img = dp.get_sample(
                     train_or_test=split, inds=[index_in_split]
                 )
 
@@ -183,104 +184,67 @@ class GenerateGFPInstantiations(Step):
                     structures_to_gen, structure_to_gen_ids
                 ):
 
-                    pbar.set_description(f"Processing {structure}")
-
-                    # grab metadata
-                    cell_metadata = dp.csv_data[
-                        dp.csv_data.CellId == this_cell_id
-                    ].drop(columns=["level_0", "Unnamed: 0", "index"])
-
-                    # search for which split this id is in
-                    splits = {
-                        k for k, v in dp.data.items() if this_cell_id in v["CellId"]
-                    }
-                    assert len(splits) == 1
-                    split = splits.pop()
-
-                    # find the index in the split
-                    index_in_split = np.where(dp.data[split]["CellId"] == this_cell_id)[
-                        0
-                    ]
-                    assert len(index_in_split) == 1
-                    index_in_split = index_in_split[0]
-
-                    # grab the sampled image
-                    gfp_img, struct_ind, ref_img = dp.get_sample(
-                        train_or_test=split, inds=[index_in_split]
+                    pbar.set_description(
+                        f"Processing {structure} in CellID {this_cell_id}"
                     )
 
-                    # move ref image to gpu
-                    ref = ref_img.cuda()
+                    df_tmp = cell_metadata[["CellId"]].copy()
+                    df_tmp["OriginalTaggedStructure"] = cell_metadata[
+                        "Structure"
+                    ].item()
 
-                    for structure, struct_ind in zip(
-                        structures_to_gen, structure_to_gen_ids
-                    ):
+                    for ij in corr_pair_inds:
+                        df_tmp[f"GeneratedStructureName_{ij}"] = structure
+                        df_tmp[f"GeneratedStructureInstance_{ij}"] = -1
+                        df_tmp[f"GeneratedStructuePath_{ij}"] = ""
+                    df_tmp = pd.concat([df_tmp] * n_pairs_per_structure).reset_index(
+                        drop=True
+                    )
 
-                        pbar.set_description(
-                            f"Processing {structure} in CellID {this_cell_id}"
+                    for batch in chunks(range(n_pairs_per_structure), batch_size):
+
+                        # one hot structure labels to generate,same for whole batch
+                        labels_gen_batch = (
+                            utils.index_to_onehot(struct_ind, len(u_classes))
+                            .repeat(len(batch), 1)
+                            .cuda()
                         )
 
-                        df_tmp = cell_metadata[["CellId"]].copy()
-                        df_tmp["OriginalTaggedStructure"] = cell_metadata[
-                            "Structure"
-                        ].item()
+                        # repeat reference structure over batch
+                        ref_batch = ref.repeat([len(batch), 1, 1, 1, 1])
 
+                        # we want two images per row, image i and image j,
+                        #  so no hidden corr in aggreagate metrics
                         for ij in corr_pair_inds:
-                            df_tmp[f"GeneratedStructureName_{ij}"] = structure
-                            df_tmp[f"GeneratedStructureInstance_{ij}"] = -1
-                            df_tmp[f"GeneratedStructuePath_{ij}"] = ""
-                        df_tmp = pd.concat(
-                            [df_tmp] * n_pairs_per_structure
-                        ).reset_index(drop=True)
 
-                        for batch in chunks(range(n_pairs_per_structure), batch_size):
-
-                            # one hot structure labels to generate,same for whole batch
-                            labels_gen_batch = (
-                                utils.index_to_onehot(struct_ind, len(u_classes))
-                                .repeat(len(batch), 1)
-                                .cuda()
+                            # generate our gfp samples
+                            target_gen_batch, _ = ae(
+                                target=None, ref=ref_batch, labels=labels_gen_batch
                             )
 
-                            # repeat reference structure over batch
-                            ref_batch = ref.repeat([len(batch), 1, 1, 1, 1])
-
-                            # we want two images per row, image i and image j,
-                            #  so no hidden corr in aggreagate metrics
-                            for ij in corr_pair_inds:
-
-                                # generate our gfp samples
-                                target_gen_batch, _ = ae(
-                                    target=None, ref=ref_batch, labels=labels_gen_batch
+                            # save images
+                            for b, im_tensor in zip(batch, target_gen_batch):
+                                struct_safe_name = structure.replace(" ", "_").lower()
+                                img_path = (
+                                    image_dir / f"generated_gfp_image_struct_"
+                                    f"{struct_safe_name}_instance_{b}_{ij}.ome.tiff"
                                 )
+                                im_write(im_tensor, img_path)
 
-                                # save images
-                                for b, im_tensor in zip(batch, target_gen_batch):
-                                    struct_safe_name = structure.replace(
-                                        " ", "_"
-                                    ).lower()
-                                    img_path = (
-                                        image_dir / f"generated_gfp_image_struct_"
-                                        f"{struct_safe_name}_instance_{b}_{ij}.ome.tiff"
-                                    )
-                                    im_write(im_tensor, img_path)
+                                df_tmp.at[b, f"GeneratedStructureInstance_{ij}"] = b
+                                df_tmp.at[b, f"GeneratedStructuePath_{ij}"] = img_path
 
-                                    df_tmp.at[b, f"GeneratedStructureInstance_{ij}"] = b
-                                    df_tmp.at[
-                                        b, f"GeneratedStructuePath_{ij}"
-                                    ] = img_path
+                                pbar.update(1)
 
-                                    pbar.update(1)
+                    df = df.append(df_tmp)
 
-                        df = df.append(df_tmp)
+                # merge df with metadata for cell
+                df = df.reset_index(drop=True)
+                df_out = cell_metadata.merge(df)
+                this_manifest_save_path = image_dir / "manifest.csv"
+                df_out.to_csv(this_manifest_save_path)
 
-                    # merge df with metadata for cell
-                    df = df.reset_index(drop=True)
-                    df_out = cell_metadata.merge(df)
-                    this_manifest_save_path = image_dir / "manifest.csv"
-                    df_out.to_csv(this_manifest_save_path)
-
-                    df_all_cellids = df_all_cellids.append(df_out)
+                df_all_cellids = df_all_cellids.append(df_out)
 
         df_all_cellids.reset_index(inplace=True)
         # save out manifest
