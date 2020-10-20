@@ -421,6 +421,7 @@ class MakeDiagnosticSheet(Step):
 
             # htmlwriter.set_png_folder(cell_images_2d_all_proj_dir)
             htmlwriter.set_png_folder(Path("./cell_images_2d_all_proj/"))
+            htmlwriter.set_tif_folder("./cell_images_3d")
 
             count = 0
 
@@ -440,9 +441,12 @@ class MakeDiagnosticSheet(Step):
                 this_filename = row.CellImage2DAllProjectionsPath
                 this_filename = str(this_filename).split("/", 4)[-1]
 
+                this_tiff = row.CellImage3DPath
+                this_tiff = str(this_tiff).split("/", 4)[-1]
+
                 htmlwriter.imagelink(
                     filename=f"{this_filename}",
-                    link=".",
+                    link=f"{this_tiff}",
                     width=128,
                     label=f"{this_label}",
                 )
@@ -481,6 +485,11 @@ class MakeDiagnosticSheet(Step):
         Provided a dataset of cell features and standardized FOV images, generate 3D
         single cell crops and 2D projections.
 
+        Example run:
+        cvapipe makediagnosticsheet run --dataset 
+        "/allen/aics/modeling/ritvik/projects/cvapipe/local_staging/generategfpinstantiations/images_CellID_86655/manifest.csv"
+        --batch_size 64 --projection_channels "seg" --ncells 9
+        
         Parameters
         ----------
         dataset: Union[str, Path, pd.DataFrame, dd.DataFrame]
