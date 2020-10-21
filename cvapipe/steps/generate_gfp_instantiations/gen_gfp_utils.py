@@ -4,11 +4,6 @@ import numpy as np
 import logging
 import torch
 
-# import sys
-
-# # insert at 1, 0 is the script path (or '' in REPL)
-# sys.path.insert(1, "/allen/aics/modeling/ritvik/projects/pytorch_integrated_cell/")
-
 from integrated_cell.networks.ref_target_autoencoder import Autoencoder
 from integrated_cell import utils
 

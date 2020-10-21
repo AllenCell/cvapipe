@@ -41,16 +41,17 @@ step_workflow_requirements = [
     "cloudpickle>=1.5.0",  # needed for distributed
     "bokeh>=2.1.0",
     "dask[bag]>=2.21.0",
+    "boto3==1.15",  # pin boto3 to resolve CI issues
     "dask_jobqueue>=0.7.0",
     "datastep>=0.1.8",
     "distributed>=2.21.0",
-    "docutils<0.16",  # needed for botocore (quilt dependency)
+    "docutils>=0.15.2",  # needed for botocore (quilt dependency)
     "fire",
     "fsspec>=0.7.4",  # needed for dask[bag]
     "partd>=1.1.0",  # needed for dask[bag]
     "prefect>=0.12.5",
     "python-dateutil<=2.8.0",  # needed for quilt3 (datastep dependency)
-    "aics_dask_utils",  # needed for multiple steps, e.g., DistributedHandler
+    "aics_dask_utils>=0.2.0",  # needed for multiple steps, e.g., DistributedHandler
 ]
 
 requirements = [
@@ -79,6 +80,7 @@ integrated_cell_requirements = [
     "torch==1.2.0",
     "torchvision==0.2.1",
     "natsort==5.3.3",
+    "pytorch_integrated_cell @ git+https://git@github.com/AllenCellModeling/pytorch_integrated_cell@feature/updated_dependencies#egg=pytorch_integrated_cell",
 ]
 
 extra_requirements = {

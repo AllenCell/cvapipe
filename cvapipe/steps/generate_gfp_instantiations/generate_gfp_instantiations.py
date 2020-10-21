@@ -11,12 +11,6 @@ import pandas as pd
 import numpy as np
 import torch
 
-import sys
-
-# Insert path to an IC module
-sys.path.insert(1, "/allen/aics/modeling/ritvik/projects/pytorch_integrated_cell/")
-
-
 from integrated_cell import utils
 
 # from aics_dask_utils import DistributedHandler
