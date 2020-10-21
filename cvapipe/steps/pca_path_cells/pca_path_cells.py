@@ -127,7 +127,7 @@ class PcaPathCells(Step):
             df_cells = scan_pc_for_cells(
                 df_pca,
                 pc=pc,
-                path=path_in_stdv * pc_stdv,
+                path=np.array(path_in_stdv) * pc_stdv,
                 dist_cols=dist_cols,
                 metric=metric,
                 id_col=id_col,

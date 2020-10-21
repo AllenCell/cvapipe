@@ -39,6 +39,7 @@ dev_requirements = [
 
 step_workflow_requirements = [
     "cloudpickle>=1.5.0",  # needed for distributed
+    "boto3==1.15", 
     "bokeh>=2.1.0",
     "dask[bag]>=2.21.0",
     "dask_jobqueue>=0.7.0",
