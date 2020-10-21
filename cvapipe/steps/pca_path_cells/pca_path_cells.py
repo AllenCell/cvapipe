@@ -28,10 +28,19 @@ class PcaPathCells(Step):
     def run(
         self,
         pca_csv_loc=Path(
-            "/allen/aics/modeling/rorydm/projects/IntegratedCellWorkingGroup/data/"
-            "pca_05202020_Align-IND_Chirality-OFF_CellId_old_new_map_jianxu_caleb_subset.csv"
+            "/allen/aics/assay-dev/MicroscopyOtherData/Viana/projects/"
+            "cell_shape_variation/local_staging/expand/manifest.csv"
         ),
-        pcs=[1, 2, 3, 4, 5, 6, 7, 8],
+        pcs=[
+            "DNA_MEM_PC1",
+            "DNA_MEM_PC2",
+            "DNA_MEM_PC3",
+            "DNA_MEM_PC4",
+            "DNA_MEM_PC5",
+            "DNA_MEM_PC6",
+            "DNA_MEM_PC7",
+            "DNA_MEM_PC8",
+        ],
         path_in_stdv=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
         dist_cols=[
             "DNA_MEM_PC1",
@@ -58,7 +67,16 @@ class PcaPathCells(Step):
                           "variance/05202020_Align-IND_Chirality-OFF/manifest.csv")
         pcs: List[int]
             Which pcs do we want to trace through
-            Default: [1,2,3,4,5,6,7,8]
+            Default: [
+            "DNA_MEM_PC1",
+            "DNA_MEM_PC2",
+            "DNA_MEM_PC3",
+            "DNA_MEM_PC4",
+            "DNA_MEM_PC5",
+            "DNA_MEM_PC6",
+            "DNA_MEM_PC7",
+            "DNA_MEM_PC8",
+        ]
         path_in_stdv: np.array
             Path containing points along each PC axis where we find nearest cells.
             Units are in stdv of that dimension.
