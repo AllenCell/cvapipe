@@ -117,12 +117,12 @@ class PcaPathCells(Step):
 
         for pc in pcs:
 
-            pc_stdv = df_pca[f"DNA_MEM_PC{pc}"].std()
+            pc_stdv = df_pca[pc].std()
 
             df_cells = scan_pc_for_cells(
                 df_pca,
                 pc=pc,
-                path=path_in_stdv * pc_stdv,
+                path=np.array(path_in_stdv) * pc_stdv,
                 dist_cols=dist_cols,
                 metric=metric,
                 id_col=id_col,
