@@ -45,7 +45,7 @@ step_workflow_requirements = [
     "dask_jobqueue>=0.7.0",
     "datastep>=0.1.8",
     "distributed>=2.21.0",
-    "docutils>=0.15.2",  # needed for botocore (quilt dependency)
+    "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
     "fsspec>=0.7.4",  # needed for dask[bag]
     "partd>=1.1.0",  # needed for dask[bag]
