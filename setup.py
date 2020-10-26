@@ -39,11 +39,17 @@ dev_requirements = [
 
 step_workflow_requirements = [
     "cloudpickle>=1.5.0",  # needed for distributed
+    "boto3==1.15",
     "bokeh>=2.1.0",
     "dask[bag]>=2.21.0",
     "boto3==1.15",  # pin boto3 to resolve CI issues
     "dask_jobqueue>=0.7.0",
-    "datastep>=0.1.8",
+    # SPECIAL RELEASE OF DATASTEP TO RESOLVE MALFORMED MANIFEST
+    # https://github.com/AllenCellModeling/datastep/tree/special-release
+    #
+    # Fortunately we left the 0.0.* series of releases empty
+    # New datastep projects will by default use the 0.1.* series of releases
+    "datastep==0.0.1",
     "distributed>=2.21.0",
     "docutils<0.16",  # needed for botocore (quilt dependency)
     "fire",
@@ -69,11 +75,12 @@ requirements = [
     "scikit-image",
     "aicsimageio",
     "aicsimageprocessing",
+    "image-classifier-3d",
 ]
 
 
 aics_data_requirements = [
-    "lkaccess",
+    "lkaccess>=1.4.20",
 ]
 
 integrated_cell_requirements = [
