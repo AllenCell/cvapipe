@@ -6,8 +6,11 @@ import logging
 import sys
 import traceback
 from pathlib import Path
+
 import pandas as pd
 from lkaccess import LabKey, contexts
+
+from cvapipe.constants import DatasetFields
 
 ###############################################################################
 
@@ -56,6 +59,11 @@ class Args(argparse.Namespace):
             type=Path,
             default=Path("aics_p4_data.parquet"),
             help="Path to save the dataset to.",
+        )
+        p.add_argument(
+            "--bad_fov",
+            type=Path,
+            help="Path to a dataset with FOVs to be removed",
         )
         p.add_argument(
             "--debug",
@@ -107,15 +115,30 @@ def create_aics_dataset(args: Args):
         data = data.drop_duplicates(subset=["CellId"], keep="first")
         data = data.reset_index(drop=True)
 
-        # Temporary until datasets 83 and 84 have structure segmentations
-        data = data.loc[~data["DataSetId"].isin([83, 84])]
+        # Merge Aligned and Source read path columns
+        # AlignedImageReadPath is the "better" of the two
+        data[DatasetFields.SourceReadPath] = data[
+            DatasetFields.AlignedImageReadPath
+        ].combine_first(data[DatasetFields.SourceReadPath])
+
+        # remove a list of bad FOVs (from manual curation)
+        if args.bad_fov is not None:
+            df_bad_fov = pd.read_csv(args.bad_fov)
+            remove_list = list(df_bad_fov.FOVId.unique())
+            data = data[~data['FOVId'].isin(remove_list)]
 
         # Sample the data
         if args.sample != 1.0:
-            log.info(f"Sampling dataset with frac={args.sample}...")
-            data = data.groupby("CellLineId", group_keys=False)
-            data = data.apply(pd.DataFrame.sample, frac=args.sample)
-            data = data.reset_index(drop=True)
+            if args.sample < 1:
+                log.info(f"Sampling dataset with frac={args.sample}...")
+                data = data.groupby("CellLineId", group_keys=False)
+                data = data.apply(pd.DataFrame.sample, frac=args.sample)
+                data = data.reset_index(drop=True)
+            else:
+                log.info(f"Sampling dataset with {args.sample} cells from each line.")
+                data = data.groupby("CellLineId", group_keys=False)
+                data = data.apply(pd.DataFrame.head, n=int(args.sample))
+                data = data.reset_index(drop=True)
 
         # Save to Parquet
         data.to_parquet(args.save_path)

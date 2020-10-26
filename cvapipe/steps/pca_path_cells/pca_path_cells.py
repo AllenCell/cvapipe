@@ -65,7 +65,7 @@ class PcaPathCells(Step):
             Location of csv containing pca embeddings of cells
             Default: Path("/allen/aics/assay-dev/MicroscopyOtherData/Viana/forCaleb/"\
                           "variance/05202020_Align-IND_Chirality-OFF/manifest.csv")
-        pcs: List[int]
+        pcs: List[str]
             Which pcs do we want to trace through
             Default: [
             "DNA_MEM_PC1",

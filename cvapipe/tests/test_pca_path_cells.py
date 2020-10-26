@@ -8,7 +8,7 @@ from cvapipe.steps import PcaPathCells
 
 def test_pca_path_cells(
     N_input_cells=1000,
-    pcs=[1, 2, 3, 4, 5, 6, 7, 8],
+    pcs=[f"DNA_MEM_PC{i}" for i in range(1, 8 + 1)],
     path=np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]),
     dist_cols=[f"DNA_MEM_PC{i}" for i in range(1, 8 + 1)],
     metric="euclidean",

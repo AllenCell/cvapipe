@@ -20,12 +20,17 @@ In general, all commands for this package will follow the format:
 **Available Steps**
 * `validate_dataset`: `cvapipe validatedataset run --raw_dataset {path_to_dataset}`
 will validate that the provided dataset can be processed by the downstream steps.
-* `prep_analysis_single_cell_ds`: `cvapipe prepanalysissinglecellds run --dataset /path/to/cell_table.parquet --single_cell_path /path/to/save/crop/single_cells/` will prepare the data table for analysis and other downstream steps  
+* `prep_analysis_single_cell_ds`: `cvapipe prepanalysissinglecellds run --dataset /path/to/cell_table.parquet` will prepare the data table for analysis and other downstream steps
+* `mito_class`: `cvapipe mitoclass run --dataset /path/to/preprocessed/cell_table.csv` will run 
+mitotic classifer and generate the manifest for analysis
+* `merge_dataset`: `cvapipe mergedataset run --dataset_with_annotation /path/to/manifest/from/step1 --dataset_from_labkey /path/to/manifest/from/step3` will generate the manifest for CFE
 
 ### Whole Pipeline
 To run the entire pipeline from start to finish you can simply run:
 
 `cvapipe all run --raw_dataset {path to dataset}`
+
+*Note: The mitotic classifier step was implemented with pytorch-lightning (PLT). PLT support running on slurm in two ways: by submitting a slurm job or with a customized [SlurmCluster API](https://williamfalcon.github.io/test-tube/hpc/SlurmCluster/#slurmcluster-class-api), which is different from the SlurmClaster from Dask. So, the whole pipeline will only run through first 2 steps. The last 2 steps need to run as single steps*
 
 ### Step and Pipeline Commands
 

@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import List
 import numpy as np
 import pandas as pd
-import math
-import time
 
 from shutil import rmtree
 import re
@@ -191,10 +189,12 @@ def overlap_area(p1, p2):
 
 
 def single_cell_gen_one_fov(
-    row_index: int, row: pd.Series, single_cell_dir: Path, overwrite: bool = False
+    row_index: int,
+    row: pd.Series,
+    single_cell_dir: Path,
+    per_fov_dir: Path,
+    overwrite: bool = False,
 ) -> List:
-    # TODO: currently, overwrite flag is not working.
-    # need to think more on how to deal with overwrite
     ########################################
     # parameters
     ########################################
@@ -205,12 +205,44 @@ def single_cell_gen_one_fov(
     print(f"ready to process FOV: {row.FOVId}")
 
     ########################################
+    # check if results already exist
+    ########################################
+    this_fov_path = per_fov_dir / Path(str(row.FOVId))
+    tag_file = this_fov_path / "done.txt"
+    bad_tag_file = this_fov_path / "bad.txt"
+    single_fov_csv = this_fov_path / "fov_meta.csv"
+    cells_in_fov_csv = this_fov_path / "cell_meta.csv"
+    if this_fov_path.exists():
+        if overwrite:
+            rmtree(this_fov_path)
+            os.mkdir(this_fov_path)
+        else:
+            if tag_file.exists():
+                # this fov has been fully processed, simply return
+                # the path to fov csv and cells csv
+                return [single_fov_csv, cells_in_fov_csv]
+            else:
+                if bad_tag_file.exists():
+                    # this fov is known to be a bad one, no need to re-run
+                    return [row.FOVId, False, "bad FOV, check text file for detail"]
+                else:
+                    # this fov has only been partially processed, wipe out
+                    rmtree(this_fov_path)
+                    os.mkdir(this_fov_path)
+    else:
+        os.mkdir(this_fov_path)
+
+    ########################################
     # load image and segmentation
     ########################################
+    """
     if row.AlignedImageReadPath is None:
         raw_fn = row.SourceReadPath
     else:
         raw_fn = row.AlignedImageReadPath
+    """
+    # SourceReadPath should be always available
+    raw_fn = row.SourceReadPath
 
     # verify filepaths
     if not (
@@ -221,54 +253,46 @@ def single_cell_gen_one_fov(
         # fail
         return [row.FOVId, True, "missing segmentation or raw files"]
 
-    # get the raw image and split into different channels
-    start_time = time.time()
-    raw_data = np.squeeze(AICSImage(raw_fn).data)
-    raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
-    raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
-    # find valid structure channel index
-    if math.isnan(row.ChannelNumber561):
-        raw_struct0 = raw_data[int(row.ChannelNumber488), :, :, :]
-    else:
-        raw_struct0 = raw_data[int(row.ChannelNumber561), :, :, :]
-    total_t = time.time() - start_time
-    print(f"Raw image load in: {total_t} sec")
+    raw_reader = AICSImage(raw_fn)
+    if raw_reader.shape[0] > 1:  # multi-scene
+        return [row.FOVId, False, "multi scene image"]
 
-    """
-    # because the seg results are save in one file, MembraneSegmentationFilename
-    # and NucleusSegmentationFilename should be the same
-
-    # temporily comment out during test with old data.
-    # new data will need this assertion
     try:
-        assert row.MembraneSegmentationFilename == row.NucleusSegmentationFilename,\
-            f"MembraneSegmentationFilename: {row.MembraneSegmentationFilename} and \
-            NucleusSegmentationFilename: {row.NucleusSegmentationFilename} mismatch"
-    except AssertionError as e:
-        log.info(
-            f"Failed single cell generation for FOVId: {row.FOVId}. Error: {e}"
-        )
-        return SingleCellGenOneFOVFailure(row.FOVId, True, str(e))
+        # get the raw image and split into different channels
+        raw_data = np.squeeze(raw_reader.data)
+        raw_mem0 = raw_data[int(row.ChannelNumber638), :, :, :]
+        raw_nuc0 = raw_data[int(row.ChannelNumber405), :, :, :]
+        raw_struct0 = raw_data[int(row.ChannelNumberStruct), :, :, :]
 
-    # this will be used for new data
-    seg_reader = AICSImage(row.MembraneSegmentationReadPath)
-    nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0) 
-    mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1) 
-    """
+        assert row.MembraneSegmentationReadPath == row.NucleusSegmentationReadPath
+        seg_reader = AICSImage(row.MembraneSegmentationReadPath)
+        nuc_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=0)
+        mem_seg_whole = seg_reader.get_image_data("ZYX", S=0, T=0, C=1)
 
-    # HACK: temporary solution when testing with old data ###
-    nuc_seg_whole = np.squeeze(imread(row.NucleusSegmentationReadPath))
-    mem_seg_whole = np.squeeze(imread(row.MembraneSegmentationReadPath))
+        assert (
+            mem_seg_whole.shape[0] == raw_mem0.shape[0]
+            and mem_seg_whole.shape[1] == raw_mem0.shape[1]
+            and mem_seg_whole.shape[2] == raw_mem0.shape[2]
+        ), "raw and seg dim mismatch"
 
-    # get structure segmentation
-    struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
+        assert (
+            (not np.any(raw_mem0 < 1))
+            and (not np.any(raw_nuc0 < 1))
+            and (not np.any(raw_struct0 < 1))
+        ), "one z frame is blank, ignore this FOV"
 
-    print(f"Segmentation load successfully: {row.FOVId}")
+        # get structure segmentation
+        struct_seg_whole = np.squeeze(imread(row.StructureSegmentationReadPath))
+        print(f"Segmentation load successfully: {row.FOVId}")
+    except (Exception, AssertionError) as e:
+        return [row.FOVId, True, e]
+
+    # make a copy to be used for calculating true edge cell labels
+    mem_seg_whole_copy = mem_seg_whole.copy()
 
     #########################################
     # run single cell qc in this fov
     #########################################
-    # try:
     ######################
     min_mem_size = 70000
     min_nuc_size = 10000
@@ -280,6 +304,8 @@ def single_cell_gen_one_fov(
     # double check big failure, quick reject
     if mem_seg_whole.max() <= 3 or nuc_seg_whole.max() <= 3:
         # bad images, but not bug, use "False"
+        with open(bad_tag_file, "w") as f:
+            f.write("very few cells segmented")
         return [row.FOVId, False, "very few cells segmented"]
 
     # prune the results (remove cells touching image boundary)
@@ -326,8 +352,9 @@ def single_cell_gen_one_fov(
     valid_cell = valid_cell_0.copy()
 
     # if only one cell left or no cell left, just throw it away
-    # HACK: use 0 during testing, change to 1 in real run
-    if len(valid_cell_0) < 1:
+    if len(valid_cell_0) < 2:
+        with open(bad_tag_file, "w") as f:
+            f.write("very few cells left after single cell QC")
         return [row.FOVId, False, "very few cells left after single cell QC"]
 
     print(f"single cell QC done in FOV: {row.FOVId}")
@@ -408,12 +435,12 @@ def single_cell_gen_one_fov(
             edge_fov_flag = True
 
     if edge_fov_flag:
-        true_edge_cells = find_true_edge_cells(mem_seg_whole_valid)
+        true_edge_cells = find_true_edge_cells(mem_seg_whole_copy)
 
     #################################################################
     # calculate a dictionary to store FOV info
     #################################################################
-    df_fov_meta = {
+    fov_meta = {
         "FOVId": row.FOVId,
         "structure_name": row.Gene,
         "position": row.ColonyPosition,
@@ -421,8 +448,8 @@ def single_cell_gen_one_fov(
         "str_filename": row.StructureSegmentationReadPath,
         "mem_seg_fn": row.MembraneSegmentationReadPath,
         "nuc_seg_fn": row.NucleusSegmentationReadPath,
-        "index_to_id_dict": [index_to_cellid_map],
-        "id_to_index_dict": [cellid_to_index_map],
+        "index_to_id_dict": index_to_cellid_map,
+        "id_to_index_dict": cellid_to_index_map,
         "xy_res": row.PixelScaleX,
         "z_res": row.PixelScaleZ,
         "stack_min_z": stack_min_z,
@@ -432,14 +459,17 @@ def single_cell_gen_one_fov(
         "well_name": row.WellName,
         "plateId": row.PlateId,
         "passage": row.Passage,
-        "image_size": [list(raw_mem.shape)],
+        "image_size": list(raw_mem.shape),
         "fov_seg_pass": full_fov_pass,
+        "imaging_mode": row.ImagingMode,
     }
 
+    df_fov_meta = pd.DataFrame([fov_meta])
+    df_fov_meta.to_csv(single_fov_csv, header=True, index=False)
     print(f"FOV info is done: {row.FOVId}, ready to loop through cells")
 
     # loop through all valid cells in this fov
-    df_cell_meta = []
+    cell_meta = []
     for list_idx, this_cell_index in enumerate(valid_cell):
         nuc_seg = nuc_seg_whole == this_cell_index
         mem_seg = mem_seg_whole == this_cell_index
@@ -559,7 +589,7 @@ def single_cell_gen_one_fov(
         all_seg = np.expand_dims(np.transpose(all_seg, (1, 0, 2, 3)), axis=0)
 
         crop_seg_path = thiscell_path / "segmentation.ome.tif"
-        writer = save_tif.OmeTiffWriter(crop_seg_path)
+        writer = save_tif.OmeTiffWriter(crop_seg_path, overwrite_file=True)
         writer.save(all_seg)
 
         # crop raw image
@@ -572,7 +602,7 @@ def single_cell_gen_one_fov(
         )
 
         crop_raw_path = thiscell_path / "raw.ome.tif"
-        writer = save_tif.OmeTiffWriter(crop_raw_path)
+        writer = save_tif.OmeTiffWriter(crop_raw_path, overwrite_file=True)
         writer.save(crop_raw_merged)
 
         ############################
@@ -610,15 +640,17 @@ def single_cell_gen_one_fov(
             "crop_seg": [
                 "dna_segmentation",
                 "membrane_segmentation",
-                "membrane_segmentation",
+                "membrane_segmentation_roof",
                 "struct_segmentation",
-                "struct_segmentation",
+                "struct_segmentation_roof",
             ],
         }
 
         # out for mitotic classifier
         img_out = build_one_cell_for_classification(crop_raw_merged, mem_seg)
         out_fn = thiscell_path / "for_mito_prediction.npy"
+        if out_fn.exists():
+            os.remove(out_fn)
         np.save(out_fn, img_out)
 
         #########################################
@@ -628,36 +660,45 @@ def single_cell_gen_one_fov(
             this_is_edge_cell = 0
 
         # write qcb cell meta
-        df_cell_meta.append(
+        cell_meta.append(
             {
                 "CellId": cell_id,
                 "structure_name": row.Gene,
                 "pair": this_cell_is_pair,
                 "this_cell_nbr_complete": this_cell_nbr_complete,
-                "this_cell_nbr_dist_3d": [this_cell_nbr_dist_3d],
-                "this_cell_nbr_dist_2d": [this_cell_nbr_dist_2d],
-                "this_cell_nbr_overlap_area": [this_cell_nbr_overlap_area],
-                "roi": [roi],
+                "this_cell_nbr_dist_3d": this_cell_nbr_dist_3d,
+                "this_cell_nbr_dist_2d": this_cell_nbr_dist_2d,
+                "this_cell_nbr_overlap_area": this_cell_nbr_overlap_area,
+                "roi": roi,
                 "crop_raw": crop_raw_path,
                 "crop_seg": crop_seg_path,
-                "name_dict": [name_dict],
-                "scale_micron": [[0.108, 0.108, 0.108]],
+                "name_dict": name_dict,
+                "scale_micron": [0.108333, 0.108333, 0.108333],
                 "edge_flag": this_is_edge_cell,
                 "fov_id": row.FOVId,
                 "fov_path": raw_fn,
+                "fov_seg_path": row.MembraneSegmentationReadPath,
+                "struct_seg_path": row.StructureSegmentationReadPath,
+                "this_cell_index": this_cell_index,
                 "stack_min_z": stack_min_z,
                 "stack_max_z": stack_max_z,
-                "image_size": [list(raw_mem.shape)],
+                "image_size": list(raw_mem.shape),
                 "plateId": row.PlateId,
                 "position": row.ColonyPosition,
                 "scope_id": row.InstrumentId,
                 "well_id": row.WellId,
                 "well_name": row.WellName,
                 "passage": row.Passage,
+                "imaging_mode": row.ImagingMode,
             }
         )
         print(f"Cell {cell_id} is done")
 
+    df_cell_meta = pd.DataFrame(cell_meta)
+    df_cell_meta.to_csv(cells_in_fov_csv, header=True, index=False)
+
     #  single cell generation succeeds in this FOV
     print(f"FOV {row.FOVId} is done")
-    return [df_fov_meta, df_cell_meta]
+    with open(tag_file, "w") as f:
+        f.write("all cells completed")
+    return [single_fov_csv, cells_in_fov_csv]
