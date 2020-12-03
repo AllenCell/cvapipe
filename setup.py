@@ -118,7 +118,7 @@ setup(
     test_suite="cvapipe/tests",
     tests_require=test_requirements,
     extras_require=extra_requirements,
-    url="https://github.com/aics-int/cvapipe",
+    url="https://github.com/AllenCell/cvapipe",
     # Do not edit this string manually, always use bumpversion
     # Details in CONTRIBUTING.rst
     version="0.1.0",
