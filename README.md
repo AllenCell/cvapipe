@@ -1,6 +1,6 @@
 # CVAPipe
 
-[![Build Status](https://github.com/aics-int/cvapipe/workflows/Build%20Master/badge.svg)](https://github.com/aics-int/cvapipe/actions)
+[![Build Status](https://github.com/AllenCell/cvapipe/workflows/Build%20Master/badge.svg)](https://github.com/AllenCell/cvapipe/actions)
 
 Workflow to manage processing of FOVs and Cells for the Cell Variance Analysis program.
 
@@ -43,10 +43,10 @@ branch into account)
 
 ## Installation
 **Stable Release:** `pip install cvapipe`<br>
-**Development Head:** `pip install git+https://github.com/aics-int/cvapipe.git`
+**Development Head:** `pip install git+https://github.com/AllenCell/cvapipe.git`
 
 ## Development
-See [CONTRIBUTING.md](https://github.com/aics-int/cvapipe/blob/master/CONTRIBUTING.md)
+See [CONTRIBUTING.md](https://github.com/AllenCell/cvapipe/blob/master/CONTRIBUTING.md)
 for information related to developing the code.
 
 For more details on how this pipeline is constructed please see
@@ -54,10 +54,10 @@ For more details on how this pipeline is constructed please see
 and [datastep](https://github.com/AllenCellModeling/datastep).
 
 To add new steps to this pipeline, run `make_new_step` and follow the instructions in
-[CONTRIBUTING.md](https://github.com/aics-int/cvapipe/blob/master/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/AllenCell/cvapipe/blob/master/CONTRIBUTING.md)
 
 Additionally, for step workflow specific development recommendations please read:
-[DEV_RECOMMENDATIONS.md](https://github.com/aics-int/cvapipe/blob/master/DEV_RECOMMENDATIONS.md)
+[DEV_RECOMMENDATIONS.md](https://github.com/AllenCell/cvapipe/blob/master/DEV_RECOMMENDATIONS.md)
 
 ### AICS Developer Instructions
 If you do not have the raw pipeline four data to run through the pipeline, run the
